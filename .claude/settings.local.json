@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__tecjustica__pdpj_list_movimentos",
+      "mcp__tecjustica__pdpj_read_documentos_batch",
+      "mcp__tecjustica__pdpj_list_documentos",
+      "mcp__tecjustica__pdpj_read_documento",
+      "mcp__tecjustica__pdpj_buscar_processos",
+      "mcp__tecjustica__pdpj_visao_geral_processo",
+      "mcp__tecjustica__pdpj_list_partes",
+      "mcp__tecjustica__pdpj_buscar_precedentes",
+      "mcp__tecjustica__pdpj_get_documento_url"
+    ]
+  }
+}
