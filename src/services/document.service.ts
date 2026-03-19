@@ -99,7 +99,7 @@ export async function getDocumentURL(cnj: string, docId: string): Promise<string
       return null
     }
 
-    const url = mcpData.url || mcpData
+    const url = mcpData.url || (typeof mcpData === 'string' ? mcpData : null)
 
     const ttl = getTTLForType('process_documents')
     setCache(cacheKey, url, ttl)

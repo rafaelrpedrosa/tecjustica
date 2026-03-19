@@ -392,6 +392,12 @@ app.post('/api/process/visao-geral', async (req, res) => {
       const result = await callMCPTool('pdpj_visao_geral_processo', { numero_processo });
       const text = extractMCPText(result);
       if (!text) return res.status(404).json({ error: 'Processo não encontrado' });
+
+      // Detectar erro do MCP (ex: "Processo X NAO encontrado no DataLake")
+      if (text.includes('NAO encontrado') || text.includes('não encontrado') || text.startsWith('Erro')) {
+        return res.status(404).json({ error: text });
+      }
+
       res.json(parseVisaoGeral(text, numero_processo));
     } catch (mcpError) {
       console.error('❌ MCP Error:', mcpError.message);
@@ -421,11 +427,24 @@ app.post('/api/process/search', async (req, res) => {
     }
 
     const result = await callMCPTool('pdpj_buscar_processos', {
-      cpf_cnpj,
+      cpf_cnpj: digitsOnly,
       tribunal: tribunal || null,
       situacao: situacao || null,
     });
     const text = extractMCPText(result);
+
+    // Detecta se o MCP retornou uma mensagem de erro em vez de resultados
+    const isMcpError = text && (
+      text.startsWith('Erro') ||
+      text.includes('retornou HTTP') ||
+      text.includes('NAO encontrado') ||
+      text.includes('não encontrado')
+    );
+
+    if (isMcpError) {
+      return res.json({ processos: [], mcpError: text, _raw: text.substring(0, 300) });
+    }
+
     const processos = text ? parseBuscaProcessos(text) : [];
     res.json({ processos, _raw: text?.substring(0, 200) });
   } catch (error) {
@@ -531,7 +550,11 @@ app.post('/api/process/documento/conteudo', async (req, res) => {
         numero_processo,
         documento_id,
       });
-      res.json(result);
+      const text = extractMCPText(result);
+      if (!text) {
+        return res.status(404).json({ error: 'Documento não encontrado ou sem conteúdo' });
+      }
+      res.json({ conteudo: text, metadata: { titulo: '', tipo: '', dataCriacao: '', paginas: null } });
     } catch (mcpError) {
       console.error('❌ MCP Error:', mcpError.message);
       res.status(404).json({ error: 'Documento não encontrado ou indisponível no momento' });
@@ -561,7 +584,14 @@ app.post('/api/process/documento/url', async (req, res) => {
         numero_processo,
         documento_id,
       });
-      res.json(result);
+      const text = extractMCPText(result);
+      if (!text) {
+        return res.status(404).json({ error: 'URL do documento não encontrada' });
+      }
+      // Extrai URL do texto: "URL: https://..."
+      const urlMatch = text.match(/URL:\s*(https?:\/\/\S+)/);
+      const url = urlMatch ? urlMatch[1] : null;
+      res.json({ url, texto: text });
     } catch (mcpError) {
       console.error('❌ MCP Error:', mcpError.message);
       res.status(404).json({ error: 'URL do documento não encontrada ou indisponível no momento' });

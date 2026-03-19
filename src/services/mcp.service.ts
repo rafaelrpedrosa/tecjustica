@@ -24,6 +24,12 @@ async function callBackendAPI(endpoint: string, data: Record<string, any> = {}) 
 
     const response = await backendClient.post(endpoint, data)
 
+    // mcpError é um campo de aviso (não falha crítica) – repassa para o caller
+    if (response.data.mcpError) {
+      console.warn(`⚠️ MCP retornou erro em ${endpoint}:`, response.data.mcpError)
+      return response.data
+    }
+
     if (response.data.error) {
       console.error(`❌ Erro Backend: ${response.data.error}`)
       return null
@@ -31,8 +37,13 @@ async function callBackendAPI(endpoint: string, data: Record<string, any> = {}) 
 
     if (import.meta.env.DEV) console.debug(`✅ Resposta Backend recebida de ${endpoint}`)
     return response.data
-  } catch (error) {
-    console.error(`❌ Erro ao chamar backend (${endpoint}):`, error)
+  } catch (error: any) {
+    // Axios lança exceção em 4xx/5xx – extrai mensagem de erro se disponível
+    if (error.response?.data?.error) {
+      console.error(`❌ Erro Backend (${error.response.status}): ${error.response.data.error}`)
+    } else {
+      console.error(`❌ Erro ao chamar backend (${endpoint}):`, error.message || error)
+    }
     return null
   }
 }

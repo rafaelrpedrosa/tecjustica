@@ -64,7 +64,23 @@ const SearchCPF: React.FC = () => {
           results: [],
           loading: false,
           searched: true,
-          error: null,
+          error: 'Não foi possível conectar ao servidor. Verifique se o backend está rodando.',
+        }))
+        return
+      }
+
+      // Detecta erro retornado pelo MCP (ex: "o serviço retornou HTTP 400")
+      if (data.mcpError) {
+        const msg = data.mcpError.toLowerCase()
+        const isNotFound = msg.includes('nao encontrado') || msg.includes('não encontrado') || msg.includes('http 404')
+        setState((s) => ({
+          ...s,
+          results: [],
+          loading: false,
+          searched: true,
+          error: isNotFound
+            ? 'Nenhum processo encontrado para este CPF/CNPJ.'
+            : `Serviço temporariamente indisponível. Tente novamente em instantes.`,
         }))
         return
       }
@@ -80,7 +96,7 @@ const SearchCPF: React.FC = () => {
     } catch (err) {
       setState((s) => ({
         ...s,
-        error: 'Erro ao buscar processos',
+        error: 'Erro ao buscar processos. Verifique sua conexão e tente novamente.',
         loading: false,
       }))
       console.error(err)
