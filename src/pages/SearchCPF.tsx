@@ -1,0 +1,227 @@
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import Card, { CardContent } from '@/components/common/Card'
+import Button from '@/components/common/Button'
+import Badge from '@/components/common/Badge'
+import { Spinner } from '@/components/common/Loading'
+import { ErrorAlert } from '@/components/common/ErrorAlert'
+import Empty from '@/components/common/Empty'
+import { searchByCPFCNPJ } from '@/services/process.service'
+
+interface SearchState {
+  query: string
+  results: any[]
+  loading: boolean
+  error: string | null
+  searched: boolean
+}
+
+const SearchCPF: React.FC = () => {
+  const navigate = useNavigate()
+  const [state, setState] = useState<SearchState>({
+    query: '',
+    results: [],
+    loading: false,
+    error: null,
+    searched: false,
+  })
+
+  const formatInput = (value: string): string => {
+    const digits = value.replace(/\D/g, '')
+    if (digits.length <= 11) {
+      return digits
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+    }
+    return digits
+      .replace(/(\d{2})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1/$2')
+      .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
+  }
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    const digits = state.query.replace(/\D/g, '')
+    if (!digits) {
+      setState((s) => ({ ...s, error: 'Digite um CPF ou CNPJ' }))
+      return
+    }
+    if (digits.length !== 11 && digits.length !== 14) {
+      setState((s) => ({ ...s, error: 'CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos' }))
+      return
+    }
+
+    setState((s) => ({ ...s, loading: true, error: null }))
+    try {
+      const data = await searchByCPFCNPJ(digits)
+
+      if (!data) {
+        setState((s) => ({
+          ...s,
+          results: [],
+          loading: false,
+          searched: true,
+          error: 'Não foi possível conectar ao servidor. Verifique se o backend está rodando.',
+        }))
+        return
+      }
+
+      // Detecta erro retornado pelo MCP (ex: "o serviço retornou HTTP 400")
+      if (data.mcpError) {
+        const msg = data.mcpError.toLowerCase()
+        const isNotFound = msg.includes('nao encontrado') || msg.includes('não encontrado') || msg.includes('http 404')
+        setState((s) => ({
+          ...s,
+          results: [],
+          loading: false,
+          searched: true,
+          error: isNotFound
+            ? 'Nenhum processo encontrado para este CPF/CNPJ.'
+            : `Serviço temporariamente indisponível. Tente novamente em instantes.`,
+        }))
+        return
+      }
+
+      const processes = Array.isArray(data) ? data : data.processos || data.nodes || []
+      setState((s) => ({
+        ...s,
+        results: processes,
+        loading: false,
+        searched: true,
+        error: null,
+      }))
+    } catch (err) {
+      setState((s) => ({
+        ...s,
+        error: 'Erro ao buscar processos. Verifique sua conexão e tente novamente.',
+        loading: false,
+      }))
+      console.error(err)
+    }
+  }
+
+  return (
+    <div className="space-y-8">
+      <div className="space-y-2">
+        <h1 className="text-4xl font-bold text-gray-900 font-serif">Buscar por CPF/CNPJ</h1>
+        <p className="text-lg text-gray-600">
+          Encontre todos os processos de uma pessoa física ou jurídica
+        </p>
+      </div>
+
+      <Card className="border-t-4 border-t-blue-600 shadow-lg">
+        <CardContent className="py-8">
+          <form onSubmit={handleSearch} className="space-y-6">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
+                CPF ou CNPJ
+              </label>
+              <input
+                type="text"
+                value={state.query}
+                onChange={(e) =>
+                  setState((s) => ({
+                    ...s,
+                    query: formatInput(e.target.value),
+                    error: null,
+                  }))
+                }
+                placeholder="Ex: 123.456.789-10 ou 12.345.678/0001-90"
+                maxLength={18}
+                disabled={state.loading}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all font-mono disabled:bg-gray-100"
+              />
+              <ErrorAlert message={state.error} />
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                type="submit"
+                variant="primary"
+                className="flex items-center gap-2"
+                disabled={state.loading}
+              >
+                {state.loading ? (
+                  <>
+                    <Spinner size="sm" />
+                    Buscando...
+                  </>
+                ) : (
+                  '🔍 Buscar Processos'
+                )}
+              </Button>
+              {state.searched && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() =>
+                    setState({ query: '', results: [], loading: false, error: null, searched: false })
+                  }
+                >
+                  Limpar
+                </Button>
+              )}
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {state.searched && (
+        <div className="space-y-4">
+          {state.results.length === 0 ? (
+            <Empty
+              title="Nenhum processo encontrado"
+              description="Verifique o CPF/CNPJ e tente novamente"
+            />
+          ) : (
+            <>
+              <p className="text-sm text-gray-600 font-medium">
+                {state.results.length} processo{state.results.length !== 1 ? 's' : ''} encontrado
+                {state.results.length !== 1 ? 's' : ''}
+              </p>
+              <div className="space-y-3">
+                {state.results.map((proc: any, idx: number) => {
+                  const cnj = proc.numero_processo || proc.cnj || proc.id
+                  return (
+                    <Card key={cnj || idx} className="hover:shadow-md transition-shadow">
+                      <CardContent className="py-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-mono text-sm font-semibold text-gray-900">{cnj}</p>
+                            <p className="text-sm text-gray-600 mt-1">
+                              {proc.tribunal && <span className="mr-3">{proc.tribunal}</span>}
+                              {proc.classe && <span className="mr-3">{proc.classe}</span>}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {proc.status && (
+                              <Badge variant="info">{proc.status}</Badge>
+                            )}
+                            {cnj && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => navigate(`/process/${cnj}`)}
+                              >
+                                Ver processo →
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default SearchCPF

@@ -2,52 +2,271 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Overview
+## Project Overview
 
-This is a configuration workspace for the **TecJustica 3.0 Lite** MCP server — a tool for querying Brazilian judicial processes via the PDPJ/CNJ DataLake.
+**RPAtec** (Reactive Process Analysis - TecJustica) is a React/TypeScript MVP frontend for querying Brazilian judicial processes via the TecJustica MCP server. It integrates with Supabase for intelligent caching, reducing MCP calls and accelerating repeated queries.
 
-## MCP Server
+## Windows Dev Server
 
-The `tecjustica` MCP server is registered via HTTP transport:
-
-```
-URL: https://tecjusticamcp-lite-production.up.railway.app/mcp
-Transport: HTTP
-Auth: Bearer token (stored in .env as TECJUSTICA_AUTH_TOKEN)
-```
-
-To register or update the MCP server:
+`npm run dev` may fail in automated runners (bash scripts can't execute directly). Use:
 ```bash
-claude mcp add --transport http tecjustica "https://tecjusticamcp-lite-production.up.railway.app/mcp" --header "Authorization: Bearer <TOKEN>"
+"C:\\Program Files\\nodejs\\node.exe" node_modules/vite/bin/vite.js --port 5173 --host
 ```
+Preview servers are configured in `.claude/launch.json` as `"dev"` (frontend) and `"backend"`.
 
-To check connection status:
+## Development Commands
+
 ```bash
-claude mcp list
+# Start dev server (Vite, localhost:5173 or next available port)
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build locally
+npm run preview
+
+# Type checking
+npm run type-check
+
+# Linting (configured with ESLint)
+npm run lint
+
+# Testing (when configured)
+npm run test
 ```
 
-Tokens are obtained by logging in at `https://tecjusticamcp-lite-production.up.railway.app/login`.
+## Project Structure
 
-## Available MCP Tools
+```
+src/
+├── components/
+│   ├── layout/           # Header, Navigation, Layout wrapper
+│   ├── common/           # Reusable UI: Button, Card, Badge, Loading, Empty, Tabs
+│   └── process/          # Process-specific (not yet componentized from pages)
+├── pages/
+│   ├── Home.tsx          # Landing/search entry point
+│   ├── ProcessDetail.tsx # Full process view with 4 tabs
+│   ├── DocumentViewer.tsx # Document text viewer with copy/PDF actions
+│   ├── PrecedentsPage.tsx # Legal precedent search interface
+│   └── NotFound.tsx      # 404 fallback
+├── services/
+│   ├── api.ts            # Axios HTTP client with baseURL
+│   ├── supabase.ts       # Supabase client initialization
+│   ├── cache.ts          # TTL/cache logic utilities
+│   ├── process.service.ts
+│   ├── document.service.ts
+│   ├── precedent.service.ts
+│   └── mock/             # Mock data for dev (mockProcessData.ts, etc.)
+├── types/
+│   ├── process.ts        # Process, Party, Movement interfaces
+│   ├── document.ts       # Document interface
+│   └── precedent.ts      # Precedent interface
+├── hooks/                # React Query hooks (useProcess, useDocuments, etc.)
+├── App.tsx               # Router setup with React Router v6
+└── main.tsx
+```
 
-| Tool | Purpose |
-|------|---------|
-| `pdpj_visao_geral_processo` | Full process summary from CNJ number |
-| `pdpj_buscar_processos` | Find processes by CPF/CNPJ |
-| `pdpj_buscar_precedentes` | Search jurisprudence and súmulas |
-| `pdpj_list_partes` | List parties and lawyers |
-| `pdpj_list_movimentos` | Process timeline/events |
-| `pdpj_list_documentos` | List available documents |
-| `pdpj_read_documento` | Read a single document's text |
-| `pdpj_read_documentos_batch` | Read up to 50 documents at once |
-| `pdpj_get_documento_url` | Get original PDF URL |
+## Routing
 
-## Usage Instructions
+Defined in `src/App.tsx` with React Router v6:
 
-The file `tecjustica-skill-analise-processual.md` contains the full prompt/skill for judicial process analysis. Load it as system instructions when using the MCP tools to analyze processes.
+| Route | Page | Purpose |
+|-------|------|---------|
+| `/` | Home.tsx | Search entry point |
+| `/process/:cnj` | ProcessDetail.tsx | Full process details + tabs |
+| `/document/:documentId` | DocumentViewer.tsx | Document text + actions |
+| `/precedents` | PrecedentsPage.tsx | Precedent search |
+| `*` | NotFound.tsx | 404 |
 
-Key workflow:
-1. Identify process by CNJ number, CPF/CNPJ, or legal theme
-2. Use `pdpj_visao_geral_processo` as the first step for any CNJ number
-3. Never paginate automatically — always ask the user first
-4. List documents before reading them; only read what the user requests
+## High-Level Architecture
+
+### Data Flow Pattern
+
+1. **Request**: Component/hook calls service function (e.g., `getProcessByCNJ(cnj)`)
+2. **Cache Check**: Service checks Supabase `cache_metadata` table for TTL validity
+3. **Cache Hit**: If TTL valid, return data from `processes` table (or relevant table)
+4. **Cache Miss**: Call MCP server via HTTP, store result in Supabase, update TTL metadata
+5. **Return**: Component receives data + renders
+
+**Key files**:
+- `src/services/cache.ts` — `checkCache()`, `updateCacheMetadata()` logic
+- `src/services/process.service.ts` — Implements pattern for process queries
+- `src/services/supabase.ts` — Supabase client + utilities
+
+### State Management
+
+- **React Query** (TanStack Query) for server state + caching
+- **useState** for local UI state (tabs, form inputs, loading flags)
+- **useParams** for route params (e.g., CNJ number from `/process/:cnj`)
+- **useNavigate** for programmatic navigation
+
+### Page State Patterns
+
+All pages follow this interface pattern:
+
+```typescript
+interface PageState {
+  data: DataType | null
+  loading: boolean
+  error: string | null
+  [otherFields]: any
+}
+```
+
+Example: `ProcessDetail` uses `ProcessState` with process, parties, movements, documents fields.
+
+**Always use**:
+- `useEffect` with `Promise.all()` for parallel loads
+- Mock data as fallback during dev (toggle via `VITE_USE_MOCK` env var)
+- Proper error boundaries + Empty/PageLoading components for UX
+
+## Supabase Integration
+
+### Caching Strategy
+
+**TTL by Data Type** (defined in `cache_metadata` table):
+
+| Type | TTL | Reason |
+|------|-----|--------|
+| `process_overview` | 24h | Stable, rarely changes |
+| `process_movements` | 6h | Frequent updates |
+| `process_documents` | 6h | New attachments added |
+| `precedents` | 7d | Jurisprudence stable |
+
+**Key tables**:
+- `processes` — Process summaries + metadata
+- `process_parties` — Parties + lawyers (complete data, no masking)
+- `process_movements` — Immutable timeline
+- `process_documents` — Document metadata + extracted text
+- `precedents_cache` — Search results cache
+- `cache_metadata` — TTL tracking per data type
+- `audit_logs` — Immutable access logs
+
+**Setup**:
+- URL: `https://jtvojfqjtwfwcvqocadk.supabase.co`
+- Key: See `.env` file
+- Migrations: Run SQL from `supabase/migrations/001_init.sql`
+
+## Environment Variables
+
+Create `.env` (not in git):
+
+```env
+# Vite
+VITE_USE_MOCK=false                                    # true=mocks, false=real API
+
+# Supabase
+VITE_SUPABASE_URL=https://jtvojfqjtwfwcvqocadk.supabase.co
+VITE_SUPABASE_KEY=sb_publishable_YfNnAZVWPzuS39xVgXAueQ_AND-Luk0
+
+# API (MCP gateway)
+VITE_API_BASE_URL=https://tecjusticamcp-lite-production.up.railway.app
+TECJUSTICA_AUTH_TOKEN=<your-bearer-token>
+```
+
+## TecJustica MCP Integration
+
+The MCP server exposes 8+ tools for judicial data:
+- `pdpj_visao_geral_processo` — Process summary by CNJ
+- `pdpj_buscar_processos` — Find by CPF/CNPJ
+- `pdpj_buscar_precedentes` — Search jurisprudence
+- `pdpj_list_partes`, `pdpj_list_movimentos`, `pdpj_list_documentos`
+- `pdpj_read_documento`, `pdpj_read_documentos_batch`, `pdpj_get_documento_url`
+
+**Usage in services**: Wrap MCP calls in try/catch, always check cache first, store results in Supabase.
+
+## UI/Design Principles
+
+- **Tailwind CSS** for utility-first styling
+- **Refined minimalist aesthetic**: Clean typography, generous spacing, serif fonts for legal content
+- **Consistent colors**: Blue accent (`blue-600`), gray scales for neutrals
+- **Components**: Reusable Button, Card, Badge, Tab components in `src/components/common/`
+- **Responsiveness**: Mobile-first with `md:` breakpoints
+
+## Common Development Workflows
+
+### Adding a New Page
+
+1. Create `src/pages/NewPage.tsx` with useState/useEffect pattern
+2. Add route in `src/App.tsx` under `<Route element={<Layout />}>`
+3. Create service functions in `src/services/` if needed
+4. Use mock data during dev (`VITE_USE_MOCK=true`)
+
+### Adding a Service Function
+
+1. Create in `src/services/[domain].service.ts`
+2. Follow pattern: check cache → call MCP → update Supabase → return
+3. Use `cache.ts` utilities for TTL management
+4. Import and use in pages/hooks
+
+### Testing Routes
+
+```bash
+npm run dev
+# Navigate to http://localhost:5173 (or printed port)
+# Test routes: /, /process/:cnj, /document/:id, /precedents, /404
+```
+
+### Working with Mock Data
+
+Mock data lives in `src/services/mock/`. Use `VITE_USE_MOCK=true` in `.env` to bypass HTTP calls. Useful for rapid UI development without backend.
+
+## Path Resolution
+
+- Import alias `@/` resolves to `src/`
+- Configured in `vite.config.ts` and `tsconfig.json`
+- Always use: `import Component from '@/components/...'`
+
+## Build & Deployment
+
+```bash
+npm run build  # Outputs to dist/
+npm run preview # Test production build locally
+```
+
+Deploy `dist/` folder to static host (Vercel, Netlify, etc).
+
+## Type Checking
+
+TypeScript strict mode enabled. Always run before committing:
+
+```bash
+npx tsc --noEmit
+```
+
+Zero errors required before marking any TypeScript task complete.
+
+## Gotchas & Hard-Won Lessons
+
+### Cache Layer
+- `CACHE_TTL` keys in `src/services/cache.ts` are **lowercase** — must match exactly what services pass to `checkCache()` (e.g. `'process_overview'`, not `'PROCESS_OVERVIEW'`)
+- React Query `staleTime` in `src/hooks/` should match the Supabase TTL for the same data type
+
+### Backend
+- `backend-server.js` calls `process.exit(1)` if `TECJUSTICA_AUTH_TOKEN` env var is missing (by design — no silent fallback)
+- Network errors in the frontend console are **expected** when the backend is not running locally
+
+### Supabase Writes
+Always batch: map to array then single `upsert(array, { onConflict: 'field' })`.
+Never `for (const item of items) { await supabase.from(...).upsert(item) }` — this generates N sequential DB calls.
+
+## Known Limitations (MVP)
+
+- ❌ No user authentication (single-tenant for now)
+- ❌ No real-time updates (cache TTL-based only)
+- ❌ No offline support
+- ⚠️ Mock data used in dev; real MCP integration pending
+
+## Roadmap (v2+)
+
+- User authentication + personal dashboards
+- Advanced filtering (date range, tribunal, status)
+- Export to PDF
+- Dark mode
+- Notifications on case updates
+- Jurisprudence analytics/trends
+
+---
+
+**Last Updated**: 2026-03-19

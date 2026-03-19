@@ -1,0 +1,142 @@
+/**
+ * Dados mock de processos judiciais
+ */
+
+import { Process, Party, ProcessMovement } from '@/types/process'
+
+export const mockProcessData: Process[] = [
+  {
+    id: '1',
+    cnj: '0000061-33.2026.5.06.0008',
+    tribunal: 'TRT6',
+    classe: 'Reclamação Trabalhista',
+    assunto: 'Rescisão do Contrato de Trabalho',
+    status: 'Em Tramitação',
+    valor: 15000.5,
+    dataAbertura: '2023-05-15',
+    juiz: 'Juiz(a) Dr(a). João Silva',
+    createdAt: '2023-05-15T10:30:00Z',
+    updatedAt: '2024-03-18T14:25:00Z',
+  },
+  {
+    id: '2',
+    cnj: '3000066-83.2025.8.06.0203',
+    tribunal: 'TJCE',
+    classe: 'Ação Cível Ordinária',
+    assunto: 'Indenização por Dano Moral',
+    status: 'Conciliação Realizada',
+    valor: 50000.0,
+    dataAbertura: '2023-08-20',
+    juiz: 'Juiz(a) Dr(a). Maria Santos',
+    createdAt: '2023-08-20T09:15:00Z',
+    updatedAt: '2024-02-10T16:45:00Z',
+  },
+]
+
+export const mockParties: Party[] = [
+  {
+    id: '1',
+    processId: '1',
+    tipo: 'AUTOR',
+    nome: 'João de Oliveira Silva',
+    cpfCnpj: '12345678901',
+    cpfCnpjFormatado: '123.456.789-01',
+    email: 'joao@email.com',
+    telefone: '(85) 98765-4321',
+    endereco: 'Rua A, 123',
+    complementoEndereco: 'Apt. 101',
+    advogados: [
+      {
+        id: '1',
+        partyId: '1',
+        nome: 'Dr. Carlos Alberto',
+        oab: '7654321',
+        email: 'carlos@advocacia.com.br',
+        telefone: '(85) 3234-5678',
+        createdAt: '2023-05-15T10:30:00Z',
+        updatedAt: '2023-05-15T10:30:00Z',
+      },
+    ],
+    createdAt: '2023-05-15T10:30:00Z',
+    updatedAt: '2023-05-15T10:30:00Z',
+  },
+  {
+    id: '2',
+    processId: '1',
+    tipo: 'RÉU',
+    nome: 'Empresa XYZ LTDA',
+    cpfCnpj: '12345678901234',
+    cpfCnpjFormatado: '12.345.678/0001-34',
+    email: 'contato@empresaxyz.com',
+    telefone: '(85) 3333-4444',
+    endereco: 'Avenida B, 456',
+    complementoEndereco: 'Sala 789',
+    advogados: [
+      {
+        id: '2',
+        partyId: '2',
+        nome: 'Dra. Fernanda Costa',
+        oab: '1234567',
+        email: 'fernanda@advocaciaxyz.com.br',
+        telefone: '(85) 3456-7890',
+        createdAt: '2023-05-15T10:30:00Z',
+        updatedAt: '2023-05-15T10:30:00Z',
+      },
+    ],
+    createdAt: '2023-05-15T10:30:00Z',
+    updatedAt: '2023-05-15T10:30:00Z',
+  },
+]
+
+export const mockMovements: ProcessMovement[] = [
+  {
+    id: '1',
+    processId: '1',
+    data: '2023-05-15T10:30:00Z',
+    descricao: 'Distribuição do processo',
+    orgao: 'TRT6',
+    tipo: 'Distribuição',
+    createdAt: '2023-05-15T10:30:00Z',
+    updatedAt: '2023-05-15T10:30:00Z',
+  },
+  {
+    id: '2',
+    processId: '1',
+    data: '2023-06-10T14:20:00Z',
+    descricao: 'Petição inicial apresentada',
+    orgao: 'TRT6',
+    tipo: 'Petição',
+    createdAt: '2023-06-10T14:20:00Z',
+    updatedAt: '2023-06-10T14:20:00Z',
+  },
+  {
+    id: '3',
+    processId: '1',
+    data: '2023-07-05T11:00:00Z',
+    descricao: 'Contestação apresentada pela ré',
+    orgao: 'TRT6',
+    tipo: 'Contestação',
+    createdAt: '2023-07-05T11:00:00Z',
+    updatedAt: '2023-07-05T11:00:00Z',
+  },
+  {
+    id: '4',
+    processId: '1',
+    data: '2023-08-20T15:30:00Z',
+    descricao: 'Audiência de conciliação realizada',
+    orgao: 'TRT6',
+    tipo: 'Audiência',
+    createdAt: '2023-08-20T15:30:00Z',
+    updatedAt: '2023-08-20T15:30:00Z',
+  },
+  {
+    id: '5',
+    processId: '1',
+    data: '2024-03-10T09:00:00Z',
+    descricao: 'Sentença publicada',
+    orgao: 'TRT6',
+    tipo: 'Sentença',
+    createdAt: '2024-03-10T09:00:00Z',
+    updatedAt: '2024-03-10T09:00:00Z',
+  },
+]
