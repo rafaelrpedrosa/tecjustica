@@ -6,6 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **RPAtec** (Reactive Process Analysis - TecJustica) is a React/TypeScript MVP frontend for querying Brazilian judicial processes via the TecJustica MCP server. It integrates with Supabase for intelligent caching, reducing MCP calls and accelerating repeated queries.
 
+## Windows Dev Server
+
+`npm run dev` may fail in automated runners (bash scripts can't execute directly). Use:
+```bash
+"C:\\Program Files\\nodejs\\node.exe" node_modules/vite/bin/vite.js --port 5173 --host
+```
+Preview servers are configured in `.claude/launch.json` as `"dev"` (frontend) and `"backend"`.
+
 ## Development Commands
 
 ```bash
@@ -221,11 +229,27 @@ Deploy `dist/` folder to static host (Vercel, Netlify, etc).
 
 ## Type Checking
 
-TypeScript strict mode enabled. Check types locally:
+TypeScript strict mode enabled. Always run before committing:
 
 ```bash
 npx tsc --noEmit
 ```
+
+Zero errors required before marking any TypeScript task complete.
+
+## Gotchas & Hard-Won Lessons
+
+### Cache Layer
+- `CACHE_TTL` keys in `src/services/cache.ts` are **lowercase** — must match exactly what services pass to `checkCache()` (e.g. `'process_overview'`, not `'PROCESS_OVERVIEW'`)
+- React Query `staleTime` in `src/hooks/` should match the Supabase TTL for the same data type
+
+### Backend
+- `backend-server.js` calls `process.exit(1)` if `TECJUSTICA_AUTH_TOKEN` env var is missing (by design — no silent fallback)
+- Network errors in the frontend console are **expected** when the backend is not running locally
+
+### Supabase Writes
+Always batch: map to array then single `upsert(array, { onConflict: 'field' })`.
+Never `for (const item of items) { await supabase.from(...).upsert(item) }` — this generates N sequential DB calls.
 
 ## Known Limitations (MVP)
 
@@ -245,4 +269,4 @@ npx tsc --noEmit
 
 ---
 
-**Last Updated**: 2026-03-18
+**Last Updated**: 2026-03-19
