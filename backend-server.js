@@ -90,35 +90,142 @@ async function initializeMCPClient() {
   }
 }
 
+// ─── Configurações de resiliência ────────────────────────────────────────────
+const MCP_TIMEOUT_MS  = 20_000;   // 20s por chamada
+const MAX_RETRIES     = 3;        // tentativas totais
+const BACKOFF_BASE_MS = 500;      // 500ms → 1000ms → 2000ms
+
 /**
- * Executar ferramenta MCP (com retry automático ao expirar sessão)
+ * Executa uma Promise com timeout.
+ * Lança erro se não resolver dentro de `ms` milissegundos.
+ */
+function withTimeout(promise, ms, label = 'operação') {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Timeout após ${ms}ms em "${label}"`)), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
+/**
+ * Espera ms milissegundos (usado no backoff).
+ */
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Executar ferramenta MCP com:
+ *  - timeout por chamada (20s)
+ *  - retry exponencial (até 3 tentativas)
+ *  - reconexão automática ao expirar sessão
  */
 async function callMCPTool(toolName, toolInput) {
-  const MAX_RETRIES = 2;
+  let lastError;
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const backoff = BACKOFF_BASE_MS * Math.pow(2, attempt - 1); // 500, 1000, 2000
+
     try {
+      // Garante cliente conectado
       if (!mcpClient || !clientConnected) {
-        await initializeMCPClient();
+        await withTimeout(initializeMCPClient(), MCP_TIMEOUT_MS, 'connect');
       }
 
-      console.log(`🔧 Chamando MCP Tool: ${toolName}`, JSON.stringify(toolInput).substring(0, 100));
+      console.log(`🔧 [${attempt}/${MAX_RETRIES}] ${toolName}`, JSON.stringify(toolInput).substring(0, 100));
+      const start = Date.now();
 
-      const result = await mcpClient.callTool({
-        name: toolName,
-        arguments: toolInput,
-      });
+      const result = await withTimeout(
+        mcpClient.callTool({ name: toolName, arguments: toolInput }),
+        MCP_TIMEOUT_MS,
+        toolName
+      );
 
-      console.log(`✅ MCP Result recebido`);
+      console.log(`✅ ${toolName} concluído em ${Date.now() - start}ms`);
       return result;
+
     } catch (error) {
-      console.error(`❌ Tentativa ${attempt}/${MAX_RETRIES} falhou para ${toolName}:`, error.message);
+      lastError = error;
+      const isTimeout  = error.message?.includes('Timeout');
+      const isSession  = error.message?.includes('session') || error.message?.includes('connect');
+      const label      = isTimeout ? '⏱ TIMEOUT' : isSession ? '🔌 SESSÃO' : '❌ ERRO';
+
+      console.error(`${label} tentativa ${attempt}/${MAX_RETRIES} — ${toolName}: ${error.message}`);
+
+      // Descarta cliente para forçar reconexão
       mcpClient = null;
       clientConnected = false;
-      if (attempt === MAX_RETRIES) throw error;
-      console.log(`🔄 Sessão expirada, reconectando...`);
+
+      if (attempt < MAX_RETRIES) {
+        console.log(`🔄 Aguardando ${backoff}ms antes de tentar novamente...`);
+        await sleep(backoff);
+      }
     }
   }
+
+  // Esgotou tentativas
+  console.error(`💀 ${toolName} falhou após ${MAX_RETRIES} tentativas. Último erro: ${lastError?.message}`);
+  throw lastError;
 }
+
+// ─── Validação de inputs ──────────────────────────────────────────────────────
+
+const CNJ_RE = /^\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/;
+
+function validateCNJ(cnj) {
+  if (!cnj || typeof cnj !== 'string') return { ok: false, error: 'CNJ ausente' };
+  const clean = cnj.trim();
+  if (!CNJ_RE.test(clean)) return { ok: false, error: `CNJ inválido — formato esperado: NNNNNNN-DD.AAAA.J.TT.OOOO` };
+  return { ok: true, value: clean };
+}
+
+function validateCPF(digits) {
+  if (digits.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(digits)) return false; // todos iguais
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(digits[i]) * (10 - i);
+  let d1 = (sum * 10) % 11; if (d1 === 10 || d1 === 11) d1 = 0;
+  if (d1 !== parseInt(digits[9])) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(digits[i]) * (11 - i);
+  let d2 = (sum * 10) % 11; if (d2 === 10 || d2 === 11) d2 = 0;
+  return d2 === parseInt(digits[10]);
+}
+
+function validateCNPJ(digits) {
+  if (digits.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(digits)) return false;
+  const calc = (d, weights) => {
+    let sum = 0;
+    for (let i = 0; i < weights.length; i++) sum += parseInt(d[i]) * weights[i];
+    const r = sum % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  const w1 = [5,4,3,2,9,8,7,6,5,4,3,2];
+  const w2 = [6,5,4,3,2,9,8,7,6,5,4,3,2];
+  return calc(digits, w1) === parseInt(digits[12]) && calc(digits, w2) === parseInt(digits[13]);
+}
+
+function validateCPFCNPJ(raw) {
+  if (!raw || typeof raw !== 'string') return { ok: false, error: 'CPF/CNPJ ausente' };
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 11) {
+    if (!validateCPF(digits)) return { ok: false, error: 'CPF inválido (dígito verificador incorreto)' };
+    return { ok: true, value: digits, tipo: 'CPF' };
+  }
+  if (digits.length === 14) {
+    if (!validateCNPJ(digits)) return { ok: false, error: 'CNPJ inválido (dígito verificador incorreto)' };
+    return { ok: true, value: digits, tipo: 'CNPJ' };
+  }
+  return { ok: false, error: `CPF/CNPJ deve ter 11 (CPF) ou 14 (CNPJ) dígitos — recebido: ${digits.length}` };
+}
+
+function validateBusca(raw, minLen = 3) {
+  if (!raw || typeof raw !== 'string') return { ok: false, error: 'Busca ausente' };
+  const clean = raw.trim();
+  if (clean.length < minLen) return { ok: false, error: `Busca muito curta (mínimo ${minLen} caracteres)` };
+  if (clean.length > 500) return { ok: false, error: 'Busca muito longa (máximo 500 caracteres)' };
+  return { ok: true, value: clean };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Extrai texto do resultado MCP (content[0].text)
@@ -356,17 +463,8 @@ app.post('/api/process/visao-geral', async (req, res) => {
   try {
     const { numero_processo } = req.body;
 
-    if (!numero_processo) {
-      return res.status(400).json({ error: 'numero_processo é obrigatório' });
-    }
-
-    // Validar formato CNJ
-    const cnjRegex = /^\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/;
-    if (!cnjRegex.test(numero_processo)) {
-      return res
-        .status(400)
-        .json({ error: 'Formato CNJ inválido: NNNNNNN-DD.AAAA.J.TR.OOOO' });
-    }
+    const cnj = validateCNJ(numero_processo);
+    if (!cnj.ok) return res.status(400).json({ error: cnj.error });
 
     // Se VITE_USE_MOCK está ativo, retornar mock data
     if (process.env.VITE_USE_MOCK === 'true') {
@@ -417,17 +515,11 @@ app.post('/api/process/search', async (req, res) => {
   try {
     const { cpf_cnpj, tribunal, situacao } = req.body;
 
-    if (!cpf_cnpj) {
-      return res.status(400).json({ error: 'cpf_cnpj é obrigatório' });
-    }
-
-    const digitsOnly = cpf_cnpj.replace(/\D/g, '');
-    if (digitsOnly.length !== 11 && digitsOnly.length !== 14) {
-      return res.status(400).json({ error: 'CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos' });
-    }
+    const doc = validateCPFCNPJ(cpf_cnpj);
+    if (!doc.ok) return res.status(400).json({ error: doc.error });
 
     const result = await callMCPTool('pdpj_buscar_processos', {
-      cpf_cnpj: digitsOnly,
+      cpf_cnpj: doc.value,
       tribunal: tribunal || null,
       situacao: situacao || null,
     });
@@ -461,12 +553,11 @@ app.post('/api/process/partes', async (req, res) => {
   try {
     const { numero_processo } = req.body;
 
-    if (!numero_processo) {
-      return res.status(400).json({ error: 'numero_processo é obrigatório' });
-    }
+    const cnj = validateCNJ(numero_processo);
+    if (!cnj.ok) return res.status(400).json({ error: cnj.error });
 
     try {
-      const result = await callMCPTool('pdpj_list_partes', { numero_processo });
+      const result = await callMCPTool('pdpj_list_partes', { numero_processo: cnj.value });
       const text = extractMCPText(result);
       res.json(text ? parsePartes(text) : { POLO_ATIVO: [], POLO_PASSIVO: [] });
     } catch (mcpError) {
@@ -487,12 +578,11 @@ app.post('/api/process/movimentos', async (req, res) => {
   try {
     const { numero_processo, limit = 20, offset = 0 } = req.body;
 
-    if (!numero_processo) {
-      return res.status(400).json({ error: 'numero_processo é obrigatório' });
-    }
+    const cnjM = validateCNJ(numero_processo);
+    if (!cnjM.ok) return res.status(400).json({ error: cnjM.error });
 
     try {
-      const result = await callMCPTool('pdpj_list_movimentos', { numero_processo, limit, offset });
+      const result = await callMCPTool('pdpj_list_movimentos', { numero_processo: cnjM.value, limit, offset });
       const text = extractMCPText(result);
       res.json(text ? parseMovimentos(text) : []);
     } catch (mcpError) {
@@ -513,12 +603,11 @@ app.post('/api/process/documentos', async (req, res) => {
   try {
     const { numero_processo, limit = 20, offset = 0 } = req.body;
 
-    if (!numero_processo) {
-      return res.status(400).json({ error: 'numero_processo é obrigatório' });
-    }
+    const cnjD = validateCNJ(numero_processo);
+    if (!cnjD.ok) return res.status(400).json({ error: cnjD.error });
 
     try {
-      const result = await callMCPTool('pdpj_list_documentos', { numero_processo, limit, offset });
+      const result = await callMCPTool('pdpj_list_documentos', { numero_processo: cnjD.value, limit, offset });
       const text = extractMCPText(result);
       res.json(text ? parseDocumentos(text) : []);
     } catch (mcpError) {
@@ -610,9 +699,8 @@ app.post('/api/precedentes/buscar', async (req, res) => {
   try {
     const { busca, orgaos, tipos } = req.body;
 
-    if (!busca) {
-      return res.status(400).json({ error: 'busca é obrigatória' });
-    }
+    const buscaVal = validateBusca(busca);
+    if (!buscaVal.ok) return res.status(400).json({ error: buscaVal.error });
 
     try {
       const result = await callMCPTool('pdpj_buscar_precedentes', {
