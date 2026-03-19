@@ -227,104 +227,232 @@ function validateBusca(raw, minLen = 3) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Parser MCP padronizado ───────────────────────────────────────────────────
+
 /**
- * Extrai texto do resultado MCP (content[0].text)
+ * Extrai TODOS os conteúdos possíveis de uma resposta MCP.
+ * Retorna { text, structured, allTexts, format, isError }
+ *
+ * Formatos conhecidos do MCP:
+ *  A) { content: [{type:'text', text:'...'}, ...] }          ← mais comum
+ *  B) { content: [{type:'text', text:'...'}, {type:'image'}] }
+ *  C) { structuredContent: { result: '...' } }               ← alternativo
+ *  D) string direta
+ *  E) { isError: true, content: [...] }                      ← erro do MCP
  */
-function extractMCPText(result) {
-  if (!result) return null;
-  if (result.content && Array.isArray(result.content)) {
-    const textContent = result.content.find(c => c.type === 'text');
-    if (textContent) return textContent.text;
+function parseMCPResponse(result, toolName = 'unknown') {
+  if (!result) {
+    console.warn(`[MCP:${toolName}] Resposta nula`);
+    return { text: null, structured: null, allTexts: [], format: 'null', isError: true };
   }
-  if (result.structuredContent?.result) return result.structuredContent.result;
-  if (typeof result === 'string') return result;
-  return null;
+
+  // Formato D: string direta
+  if (typeof result === 'string') {
+    return { text: result, structured: null, allTexts: [result], format: 'string', isError: false };
+  }
+
+  const isError = result.isError === true;
+
+  // Formato A/B/E: content array
+  if (result.content && Array.isArray(result.content)) {
+    const allTexts = result.content
+      .filter(c => c.type === 'text' && typeof c.text === 'string')
+      .map(c => c.text.trim())
+      .filter(Boolean);
+
+    const text = allTexts.join('\n\n') || null;
+
+    if (isError) {
+      console.warn(`[MCP:${toolName}] Ferramenta retornou isError=true: ${text?.substring(0, 120)}`);
+    }
+
+    return { text, structured: null, allTexts, format: 'content-array', isError };
+  }
+
+  // Formato C: structuredContent
+  if (result.structuredContent) {
+    const structured = result.structuredContent;
+    const text = typeof structured.result === 'string'
+      ? structured.result
+      : JSON.stringify(structured);
+    return { text, structured, allTexts: [text], format: 'structured', isError };
+  }
+
+  // Desconhecido — serializa para debug
+  const fallback = JSON.stringify(result).substring(0, 300);
+  console.warn(`[MCP:${toolName}] Formato desconhecido — keys: ${Object.keys(result).join(', ')}`);
+  return { text: null, structured: result, allTexts: [], format: 'unknown', isError: true };
 }
 
 /**
+ * Compatibilidade retroativa: extrai apenas o texto (usado em lugares que
+ * ainda não foram migrados para parseMCPResponse).
+ * @deprecated Use parseMCPResponse() diretamente.
+ */
+function extractMCPText(result) {
+  return parseMCPResponse(result, '?').text;
+}
+
+// ─── Helpers de parser ────────────────────────────────────────────────────────
+
+/**
+ * Detecta se o texto indica erro ou ausência de dados.
+ */
+function isMCPError(text) {
+  if (!text) return true;
+  return /NAO encontrado|não encontrado|^Erro|retornou HTTP [45]/i.test(text);
+}
+
+/**
+ * Extrai campo chave:valor de texto MCP de forma robusta.
+ * Tenta variações: "Chave:", "chave:", espaços extras, encoding.
+ */
+function extractField(text, ...keys) {
+  for (const key of keys) {
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const m = text.match(new RegExp(`${escaped}\\s*:\\s*(.+?)(?:\\n|$)`, 'i'));
+    if (m) return m[1].trim();
+  }
+  return '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
  * Parse visão geral: texto MCP → objeto estruturado
+ * Suporta variações de labels (Processo/Número, Ajuizado/Data, etc.)
  */
 function parseVisaoGeral(text, numero_processo) {
-  const get = (key) => {
-    const m = text.match(new RegExp(`${key}:\\s*(.+?)(?:\\n|$)`));
-    return m ? m[1].trim() : '';
-  };
-  const tribunalFull = get('Tribunal');
-  const tribunal = tribunalFull.split('|')[0].trim();
-  const statusFull = get('Status');
-  const status = statusFull.split('|')[0].trim();
-  const valorMatch = text.match(/Valor:\s*R\$\s*([\d.,]+)/);
-  // Formato MCP usa vírgula como milhar: "66,568.58" → 66568.58
-  const valor = valorMatch ? parseFloat(valorMatch[1].replace(/,/g, '')) : 0;
-  const dataMatch = text.match(/Ajuizado:\s*(\d{4}-\d{2}-\d{2})/);
+  const tribunalFull = extractField(text, 'Tribunal', 'tribunal');
+  const tribunal     = tribunalFull.split('|')[0].trim();
+  const statusFull   = extractField(text, 'Status', 'status', 'Situação', 'Situacao');
+  const status       = statusFull.split('|')[0].trim();
+
+  // Valor: aceita "R$ 1.234,56", "R$1234.56", "1,234.56"
+  const valorMatch = text.match(/Valor\s*(?:da\s+Causa)?\s*:\s*R?\$?\s*([\d.,]+)/i);
+  let valor = 0;
+  if (valorMatch) {
+    const raw = valorMatch[1];
+    // Normaliza: remove separador de milhar, mantém decimal
+    valor = parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0;
+  }
+
+  // Data: aceita YYYY-MM-DD e DD/MM/YYYY
+  const dataMatch = text.match(/Ajuizado\s*:\s*(\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4})/i);
+  let data_abertura = null;
+  if (dataMatch) {
+    const raw = dataMatch[1];
+    if (raw.includes('/')) {
+      const [d, m, y] = raw.split('/');
+      data_abertura = `${y}-${m}-${d}`;
+    } else {
+      data_abertura = raw;
+    }
+  }
+
   return {
-    numero_processo: get('Processo') || numero_processo,
+    numero_processo: extractField(text, 'Processo', 'Número', 'Numero') || numero_processo,
     tribunal,
-    classe: get('Classe'),
-    assunto: get('Assunto'),
-    status: status || 'Em andamento',
+    classe:         extractField(text, 'Classe', 'classe'),
+    assunto:        extractField(text, 'Assunto', 'assunto', 'Matéria'),
+    status:         status || 'Em andamento',
+    juiz:           extractField(text, 'Juiz', 'juiz', 'Magistrado'),
     valor,
-    data_abertura: dataMatch ? dataMatch[1] : null,
-    resumo: text,
+    data_abertura,
+    resumo:         text,
   };
 }
 
 /**
  * Parse movimentos: texto MCP → array
- * Formato: [N] YYYY-MM-DD HH:MM | Tipo\n     Descricao\n     Doc: uuid
+ * Suporta formatos:
+ *  A) [N] YYYY-MM-DD HH:MM | Tipo\n   Desc\n   Doc: uuid
+ *  B) N. YYYY-MM-DD - Tipo\n   Desc
+ *  C) Data: YYYY-MM-DD\nTipo: ...\nDesc: ...
  */
 function parseMovimentos(text) {
   const movements = [];
   const lines = text.split('\n');
   let current = null;
+  let idx = 0;
+
   for (const line of lines) {
-    const headerMatch = line.match(/^\[(\d+)\]\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+\|\s+(.+)$/);
-    if (headerMatch) {
+    const l = line.trim();
+    if (!l || l.startsWith('Mostrando') || l.startsWith('Total:')) continue;
+
+    // Formato A: [N] YYYY-MM-DD HH:MM | Tipo
+    const fmtA = l.match(/^\[(\d+)\]\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+\|\s+(.+)$/);
+    // Formato B: N. YYYY-MM-DD - Tipo  ou  N. YYYY-MM-DD | Tipo
+    const fmtB = !fmtA && l.match(/^(\d+)\.\s+(\d{4}-\d{2}-\d{2})\s+[-|]\s+(.+)$/);
+    // Formato C: "Data: YYYY-MM-DD"
+    const fmtC = !fmtA && !fmtB && l.match(/^Data\s*:\s*(\d{4}-\d{2}-\d{2})/i);
+
+    if (fmtA) {
       if (current) movements.push(current);
-      current = {
-        id: `mov-${headerMatch[1]}`,
-        data: `${headerMatch[2]}T${headerMatch[3]}:00`,
-        tipo: headerMatch[4].trim(),
-        descricao: '',
-        orgao: '',
-        doc_id: null,
-      };
-    } else if (current && line.trim().startsWith('Doc:')) {
-      current.doc_id = line.trim().replace('Doc:', '').trim();
-    } else if (current && line.trim() && !line.trim().startsWith('Mostrando')) {
-      if (!current.descricao) current.descricao = line.trim();
+      current = { id: `mov-${fmtA[1]}`, data: `${fmtA[2]}T${fmtA[3]}:00`, tipo: fmtA[4].trim(), descricao: '', orgao: '', doc_id: null };
+    } else if (fmtB) {
+      if (current) movements.push(current);
+      current = { id: `mov-${fmtB[1]}`, data: `${fmtB[2]}T00:00:00`, tipo: fmtB[3].trim(), descricao: '', orgao: '', doc_id: null };
+    } else if (fmtC) {
+      if (current) movements.push(current);
+      idx++;
+      current = { id: `mov-${idx}`, data: `${fmtC[1]}T00:00:00`, tipo: '', descricao: '', orgao: '', doc_id: null };
+    } else if (current) {
+      if (l.startsWith('Doc:'))   { current.doc_id = l.replace(/^Doc:\s*/i, '').trim(); }
+      else if (l.startsWith('Tipo:') && !current.tipo) { current.tipo = l.replace(/^Tipo:\s*/i, '').trim(); }
+      else if (l.startsWith('Órgão:') || l.startsWith('Orgao:')) { current.orgao = l.split(':').slice(1).join(':').trim(); }
+      else if (!current.descricao && l.length > 2) { current.descricao = l; }
     }
   }
   if (current) movements.push(current);
+
+  if (movements.length === 0) console.warn('[parseMovimentos] Nenhum movimento extraído — verificar formato do texto MCP');
   return movements;
 }
 
 /**
  * Parse documentos: texto MCP → array
- * Formato: [N] YYYY-MM-DD | filename (Tipo) | N pag | N chars | ACESSO\n     ID: uuid
+ * Suporta formatos:
+ *  A) [N] YYYY-MM-DD | titulo (Tipo) | N pag | N chars | ACESSO\n   ID: uuid
+ *  B) N. titulo\n   Data: YYYY-MM-DD\n   ID: uuid\n   Tipo: ...
  */
 function parseDocumentos(text) {
   const docs = [];
   const lines = text.split('\n');
   let current = null;
+
   for (const line of lines) {
-    const headerMatch = line.match(/^\[(\d+)\]\s+(\d{4}-\d{2}-\d{2})\s+\|\s+(.+?)\s+\((.+?)\)/);
-    if (headerMatch) {
+    const l = line.trim();
+    if (!l || l.startsWith('Mostrando') || l.startsWith('Total:')) continue;
+
+    // Formato A: [N] YYYY-MM-DD | titulo (Tipo)
+    const fmtA = l.match(/^\[(\d+)\]\s+(\d{4}-\d{2}-\d{2})\s+\|\s+(.+?)\s+\(([^)]+)\)/);
+    // Formato B: N. titulo (sem data na linha)
+    const fmtB = !fmtA && l.match(/^(\d+)\.\s+(.+)$/);
+
+    if (fmtA) {
       if (current) docs.push(current);
-      const pagsMatch = line.match(/(\d+)\s+pag/);
+      const pagsMatch = l.match(/(\d+)\s+p[áa]g/i);
       current = {
         id: null,
-        titulo: headerMatch[3].trim(),
-        tipo: headerMatch[4].trim(),
-        data_criacao: headerMatch[2],
+        titulo: fmtA[3].trim(),
+        tipo: fmtA[4].trim(),
+        data_criacao: fmtA[2],
         paginas: pagsMatch ? parseInt(pagsMatch[1]) : null,
       };
-    } else if (current && line.trim().startsWith('ID:')) {
-      const idMatch = line.match(/ID:\s*([\w-]+)/);
-      if (idMatch) current.id = idMatch[1];
+    } else if (fmtB && !l.includes(':')) {
+      if (current) docs.push(current);
+      current = { id: null, titulo: fmtB[2].trim(), tipo: '', data_criacao: null, paginas: null };
+    } else if (current) {
+      if (l.startsWith('ID:'))    { const m = l.match(/ID:\s*([\w-]+)/); if (m) current.id = m[1]; }
+      if (l.startsWith('Data:'))  { const m = l.match(/(\d{4}-\d{2}-\d{2})/); if (m) current.data_criacao = m[1]; }
+      if (l.startsWith('Tipo:'))  { current.tipo = l.replace(/^Tipo:\s*/i, '').trim(); }
+      if (l.match(/(\d+)\s+p[áa]g/i)) { const m = l.match(/(\d+)\s+p[áa]g/i); if (m) current.paginas = parseInt(m[1]); }
     }
   }
   if (current) docs.push(current);
+
+  if (docs.length === 0) console.warn('[parseDocumentos] Nenhum documento extraído — verificar formato do texto MCP');
   return docs;
 }
 
@@ -488,14 +616,10 @@ app.post('/api/process/visao-geral', async (req, res) => {
     // Chamar MCP Tool e converter resposta texto → JSON estruturado
     try {
       const result = await callMCPTool('pdpj_visao_geral_processo', { numero_processo });
-      const text = extractMCPText(result);
-      if (!text) return res.status(404).json({ error: 'Processo não encontrado' });
-
-      // Detectar erro do MCP (ex: "Processo X NAO encontrado no DataLake")
-      if (text.includes('NAO encontrado') || text.includes('não encontrado') || text.startsWith('Erro')) {
-        return res.status(404).json({ error: text });
+      const { text, isError } = parseMCPResponse(result, 'pdpj_visao_geral_processo');
+      if (!text || isError || isMCPError(text)) {
+        return res.status(404).json({ error: text || 'Processo não encontrado' });
       }
-
       res.json(parseVisaoGeral(text, numero_processo));
     } catch (mcpError) {
       console.error('❌ MCP Error:', mcpError.message);
@@ -523,22 +647,14 @@ app.post('/api/process/search', async (req, res) => {
       tribunal: tribunal || null,
       situacao: situacao || null,
     });
-    const text = extractMCPText(result);
+    const { text, isError } = parseMCPResponse(result, 'pdpj_buscar_processos');
 
-    // Detecta se o MCP retornou uma mensagem de erro em vez de resultados
-    const isMcpError = text && (
-      text.startsWith('Erro') ||
-      text.includes('retornou HTTP') ||
-      text.includes('NAO encontrado') ||
-      text.includes('não encontrado')
-    );
-
-    if (isMcpError) {
-      return res.json({ processos: [], mcpError: text, _raw: text.substring(0, 300) });
+    if (!text || isError || isMCPError(text)) {
+      return res.json({ processos: [], mcpError: text || 'Sem resultados' });
     }
 
-    const processos = text ? parseBuscaProcessos(text) : [];
-    res.json({ processos, _raw: text?.substring(0, 200) });
+    const processos = parseBuscaProcessos(text);
+    res.json({ processos });
   } catch (error) {
     console.error('Erro interno:', error);
     res.status(500).json({ error: 'Erro ao processar requisição' });
@@ -558,8 +674,8 @@ app.post('/api/process/partes', async (req, res) => {
 
     try {
       const result = await callMCPTool('pdpj_list_partes', { numero_processo: cnj.value });
-      const text = extractMCPText(result);
-      res.json(text ? parsePartes(text) : { POLO_ATIVO: [], POLO_PASSIVO: [] });
+      const { text, isError } = parseMCPResponse(result, 'pdpj_list_partes');
+      res.json(text && !isError ? parsePartes(text) : { POLO_ATIVO: [], POLO_PASSIVO: [] });
     } catch (mcpError) {
       console.error('❌ MCP Error:', mcpError.message);
       res.json({ POLO_ATIVO: [], POLO_PASSIVO: [] });
@@ -583,8 +699,8 @@ app.post('/api/process/movimentos', async (req, res) => {
 
     try {
       const result = await callMCPTool('pdpj_list_movimentos', { numero_processo: cnjM.value, limit, offset });
-      const text = extractMCPText(result);
-      res.json(text ? parseMovimentos(text) : []);
+      const { text, isError } = parseMCPResponse(result, 'pdpj_list_movimentos');
+      res.json(text && !isError ? parseMovimentos(text) : []);
     } catch (mcpError) {
       console.error('❌ MCP Error:', mcpError.message);
       res.json([]);
@@ -608,8 +724,8 @@ app.post('/api/process/documentos', async (req, res) => {
 
     try {
       const result = await callMCPTool('pdpj_list_documentos', { numero_processo: cnjD.value, limit, offset });
-      const text = extractMCPText(result);
-      res.json(text ? parseDocumentos(text) : []);
+      const { text, isError } = parseMCPResponse(result, 'pdpj_list_documentos');
+      res.json(text && !isError ? parseDocumentos(text) : []);
     } catch (mcpError) {
       console.error('❌ MCP Error:', mcpError.message);
       res.json([]);
@@ -639,9 +755,9 @@ app.post('/api/process/documento/conteudo', async (req, res) => {
         numero_processo,
         documento_id,
       });
-      const text = extractMCPText(result);
-      if (!text) {
-        return res.status(404).json({ error: 'Documento não encontrado ou sem conteúdo' });
+      const { text, isError } = parseMCPResponse(result, 'pdpj_read_documento');
+      if (!text || isError || isMCPError(text)) {
+        return res.status(404).json({ error: text || 'Documento não encontrado ou sem conteúdo' });
       }
       res.json({ conteudo: text, metadata: { titulo: '', tipo: '', dataCriacao: '', paginas: null } });
     } catch (mcpError) {
@@ -673,12 +789,12 @@ app.post('/api/process/documento/url', async (req, res) => {
         numero_processo,
         documento_id,
       });
-      const text = extractMCPText(result);
-      if (!text) {
+      const { text, isError } = parseMCPResponse(result, 'pdpj_get_documento_url');
+      if (!text || isError) {
         return res.status(404).json({ error: 'URL do documento não encontrada' });
       }
-      // Extrai URL do texto: "URL: https://..."
-      const urlMatch = text.match(/URL:\s*(https?:\/\/\S+)/);
+      // Extrai URL do texto — aceita "URL: https://..." ou URL direta
+      const urlMatch = text.match(/(?:URL:\s*)?(https?:\/\/\S+)/);
       const url = urlMatch ? urlMatch[1] : null;
       res.json({ url, texto: text });
     } catch (mcpError) {
@@ -708,8 +824,8 @@ app.post('/api/precedentes/buscar', async (req, res) => {
         orgaos: orgaos || null,
         tipos: tipos || null,
       });
-      const text = extractMCPText(result);
-      res.json(text ? parsePrecedentes(text, busca) : { busca, total: 0, resultados: [] });
+      const { text, isError } = parseMCPResponse(result, 'pdpj_buscar_precedentes');
+      res.json(text && !isError ? parsePrecedentes(text, buscaVal.value) : { busca: buscaVal.value, total: 0, resultados: [] });
     } catch (mcpError) {
       console.error('❌ MCP Error:', mcpError.message);
       res.json({ busca, total: 0, resultados: [] });
@@ -735,10 +851,10 @@ app.get('/api/documento-pdf/:numero_processo/:documento_id', async (req, res) =>
         numero_processo,
         documento_id,
       });
-      const text = extractMCPText(result);
+      const { text } = parseMCPResponse(result, 'pdpj_get_documento_url[pdf]');
       if (text) {
-        const urlMatch = text.match(/https?:\/\/\S+/);
-        pdfUrl = urlMatch ? urlMatch[0] : null;
+        const urlMatch = text.match(/(?:URL:\s*)?(https?:\/\/\S+)/);
+        pdfUrl = urlMatch ? urlMatch[1] : null;
       }
     } catch (err) {
       console.error('❌ Erro ao obter URL do documento:', err.message);
