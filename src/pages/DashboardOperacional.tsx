@@ -130,51 +130,51 @@ const DashboardOperacional: React.FC = () => {
 
           {/* Top 5 urgentes */}
           <Card>
-        <CardContent>
-          <h2 className="font-semibold text-gray-900 mb-4">🔥 Top 5 Mais Urgentes</h2>
-          {top5.length === 0 ? (
-            <p className="text-gray-400 text-sm text-center py-6">
-              Nenhuma diligência ativa. Ótimo trabalho!
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {top5.map((d) => (
-                <div
-                  key={d.id}
-                  className={`flex items-center justify-between p-3 rounded-lg border-l-4 cursor-pointer hover:opacity-90 ${
-                    d.prioridade === 'URGENTE'
-                      ? 'bg-red-50 border-l-red-500'
-                      : d.prioridade === 'ALTA'
-                      ? 'bg-yellow-50 border-l-yellow-400'
-                      : 'bg-gray-50 border-l-gray-300'
-                  }`}
-                  onClick={() => navigate(`/process/${d.cnj}`)}
-                >
-                  <div className="flex items-center gap-3">
-                    <span>{PRIORIDADE_ICON[d.prioridade]}</span>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {d.clienteNome ?? d.cnj}
-                      </p>
-                      <p className="text-xs text-gray-500">{ACAO_LABEL[d.acaoRecomendada]}</p>
+            <CardContent>
+              <h2 className="font-semibold text-gray-900 mb-4">🔥 Top 5 Mais Urgentes</h2>
+              {top5.length === 0 ? (
+                <p className="text-gray-400 text-sm text-center py-6">
+                  Nenhuma diligência ativa. Ótimo trabalho!
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {top5.map((d) => (
+                    <div
+                      key={d.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border-l-4 cursor-pointer hover:opacity-90 ${
+                        d.prioridade === 'URGENTE'
+                          ? 'bg-red-50 border-l-red-500'
+                          : d.prioridade === 'ALTA'
+                          ? 'bg-yellow-50 border-l-yellow-400'
+                          : 'bg-gray-50 border-l-gray-300'
+                      }`}
+                      onClick={() => navigate(`/process/${d.cnj}`)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span>{PRIORIDADE_ICON[d.prioridade]}</span>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {d.clienteNome ?? d.cnj}
+                          </p>
+                          <p className="text-xs text-gray-500">{ACAO_LABEL[d.acaoRecomendada]}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-lg font-bold ${
+                          d.prioridade === 'URGENTE' ? 'text-red-600' : 'text-yellow-600'
+                        }`}>
+                          {d.diasParado}d
+                        </p>
+                        {d.retorno && (
+                          <p className="text-xs text-gray-400 italic max-w-40 truncate">{d.retorno}</p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-lg font-bold ${
-                      d.prioridade === 'URGENTE' ? 'text-red-600' : 'text-yellow-600'
-                    }`}>
-                      {d.diasParado}d
-                    </p>
-                    {d.retorno && (
-                      <p className="text-xs text-gray-400 italic max-w-40 truncate">{d.retorno}</p>
-                    )}
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </div>
