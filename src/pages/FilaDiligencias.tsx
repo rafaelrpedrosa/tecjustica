@@ -94,6 +94,14 @@ const FilaDiligencias: React.FC = () => {
     return matchBusca && matchPrioridade && matchStatus
   })
 
+  const filtrosAtivos = !!(busca || filtroPrioridade || filtroStatus)
+
+  function limparFiltros() {
+    setBusca('')
+    setFiltroPrioridade('')
+    setFiltroStatus('')
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -142,11 +150,26 @@ const FilaDiligencias: React.FC = () => {
               <option value="CONCLUIDA">Concluída</option>
               <option value="SEM_RETORNO">Sem retorno</option>
             </select>
+            {filtrosAtivos && (
+              <button
+                onClick={limparFiltros}
+                className="px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+              >
+                ✕ Limpar filtros
+              </button>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Tabela */}
+      {/* Contador de resultados */}
+      {filtrosAtivos && filtrada.length < lista.length && (
+        <p className="text-sm text-gray-500">
+          Exibindo <span className="font-medium">{filtrada.length}</span> de{' '}
+          <span className="font-medium">{lista.length}</span> diligência{lista.length !== 1 ? 's' : ''}
+        </p>
+      )}
+
       {filtrada.length === 0 ? (
         <Empty
           title="Nenhuma diligência encontrada"
