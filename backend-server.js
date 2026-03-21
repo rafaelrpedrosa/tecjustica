@@ -192,6 +192,13 @@ const BACKOFF_BASE_MS = 500;      // 500ms → 1000ms → 2000ms
  * Executa uma Promise com timeout.
  * Lança erro se não resolver dentro de `ms` milissegundos.
  */
+/**
+ * Envolve uma Promise com timeout.
+ * @param {Promise<any>} promise - Promise a aguardar
+ * @param {number} ms - Limite em milissegundos
+ * @param {string} label - Nome da operação para mensagem de erro
+ * @returns {Promise<any>} Resultado da promise ou rejeição por timeout
+ */
 function withTimeout(promise, ms, label = 'operação') {
   const timeout = new Promise((_, reject) =>
     setTimeout(() => reject(new Error(`Timeout após ${ms}ms em "${label}"`)), ms)
@@ -262,6 +269,11 @@ async function callMCPTool(toolName, toolInput) {
 
 const CNJ_RE = /^\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/;
 
+/**
+ * Valida número CNJ no formato NNNNNNN-DD.AAAA.J.TT.OOOO.
+ * @param {string} cnj - Número CNJ bruto
+ * @returns {{ ok: true, value: string } | { ok: false, error: string }}
+ */
 function validateCNJ(cnj) {
   if (!cnj || typeof cnj !== 'string') return { ok: false, error: 'CNJ ausente' };
   const clean = cnj.trim();
@@ -269,6 +281,11 @@ function validateCNJ(cnj) {
   return { ok: true, value: clean };
 }
 
+/**
+ * Valida CPF pelo algoritmo de dígitos verificadores.
+ * @param {string} digits - 11 dígitos numéricos sem formatação
+ * @returns {boolean}
+ */
 function validateCPF(digits) {
   if (digits.length !== 11) return false;
   if (/^(\d)\1{10}$/.test(digits)) return false; // todos iguais
@@ -282,6 +299,11 @@ function validateCPF(digits) {
   return d2 === parseInt(digits[10]);
 }
 
+/**
+ * Valida CNPJ pelo algoritmo de dígitos verificadores.
+ * @param {string} digits - 14 dígitos numéricos sem formatação
+ * @returns {boolean}
+ */
 function validateCNPJ(digits) {
   if (digits.length !== 14) return false;
   if (/^(\d)\1{13}$/.test(digits)) return false;
@@ -296,6 +318,11 @@ function validateCNPJ(digits) {
   return calc(digits, w1) === parseInt(digits[12]) && calc(digits, w2) === parseInt(digits[13]);
 }
 
+/**
+ * Valida CPF (11 dígitos) ou CNPJ (14 dígitos), removendo máscara automaticamente.
+ * @param {string} raw - CPF ou CNPJ com ou sem formatação
+ * @returns {{ ok: true, value: string, tipo: 'CPF'|'CNPJ' } | { ok: false, error: string }}
+ */
 function validateCPFCNPJ(raw) {
   if (!raw || typeof raw !== 'string') return { ok: false, error: 'CPF/CNPJ ausente' };
   const digits = raw.replace(/\D/g, '');
@@ -310,6 +337,12 @@ function validateCPFCNPJ(raw) {
   return { ok: false, error: `CPF/CNPJ deve ter 11 (CPF) ou 14 (CNPJ) dígitos — recebido: ${digits.length}` };
 }
 
+/**
+ * Valida string de busca livre (termos de pesquisa de precedentes etc.).
+ * @param {string} raw - Texto da busca
+ * @param {number} minLen - Tamanho mínimo aceito (default 3)
+ * @returns {{ ok: true, value: string } | { ok: false, error: string }}
+ */
 function validateBusca(raw, minLen = 3) {
   if (!raw || typeof raw !== 'string') return { ok: false, error: 'Busca ausente' };
   const clean = raw.trim();
