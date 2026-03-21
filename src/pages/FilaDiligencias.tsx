@@ -248,6 +248,7 @@ const FilaDiligencias: React.FC = () => {
                         {d.status !== 'CONCLUIDA' && (
                           <>
                             <button
+                              type="button"
                               onClick={() => setModalDiligencia(d)}
                               className="px-2 py-1 bg-white border border-gray-300 rounded text-xs hover:bg-gray-50"
                             >
@@ -276,9 +277,15 @@ const FilaDiligencias: React.FC = () => {
       )}
 
       {confirmarConclusao && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmar-conclusao-titulo"
+        onKeyDown={(e) => e.key === 'Escape' && setConfirmarConclusao(null)}
+        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      >
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirmar conclusão</h3>
+            <h3 id="confirmar-conclusao-titulo" className="text-lg font-semibold text-gray-900 mb-2">Confirmar conclusão</h3>
             <p className="text-sm text-gray-600 mb-6">
               Marcar a diligência de{' '}
               <span className="font-medium">
