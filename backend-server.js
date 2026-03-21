@@ -137,7 +137,7 @@ async function initializeMCPClient() {
 
   try {
     console.log(`🔌 Conectando ao MCP Server: ${MCP_SERVER_URL}`);
-    console.log(`   AUTH Token length: ${AUTH_TOKEN?.length}`);
+    console.log(`   AUTH Token: configurado ✓`);
 
     // Usar transporte Streamable HTTP (protocolo MCP moderno)
     const transport = new StreamableHTTPClientTransport(

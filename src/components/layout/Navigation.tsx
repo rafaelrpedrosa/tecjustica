@@ -9,10 +9,13 @@ const Navigation: React.FC = () => {
   const isActive = (path: string) => location.pathname === path
 
   useEffect(() => {
-    listarAlertas().then(a => setAlertasCount(a.length)).catch(() => {})
-    const interval = setInterval(() => {
-      listarAlertas().then(a => setAlertasCount(a.length)).catch(() => {})
-    }, 60_000)
+    const loadAlertas = () => {
+      listarAlertas()
+        .then(a => setAlertasCount(a.length))
+        .catch(e => console.warn('Falha ao carregar alertas:', e))
+    }
+    loadAlertas()
+    const interval = setInterval(loadAlertas, 60_000)
     return () => clearInterval(interval)
   }, [])
 
