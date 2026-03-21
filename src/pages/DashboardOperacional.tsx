@@ -70,93 +70,113 @@ const DashboardOperacional: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid de métricas */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      {lista.length === 0 ? (
         <Card>
-          <CardContent className="py-5 text-center">
-            <p className="text-4xl font-bold text-red-600">{m.urgentes}</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Urgentes</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-5 text-center">
-            <p className="text-4xl font-bold text-yellow-600">{m.pendentes}</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Pendentes</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-5 text-center">
-            <p className="text-4xl font-bold text-blue-600">{m.emAndamento}</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Em andamento</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-5 text-center">
-            <p className="text-4xl font-bold text-green-600">{m.concluidas}</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Concluídas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-5 text-center">
-            <p className="text-4xl font-bold text-gray-700">{m.mediaDias}d</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Média dias parado</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-5 text-center">
-            <p className="text-4xl font-bold text-purple-600">{m.acaoHoje}</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Ação hoje</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Top 5 urgentes */}
-      <Card>
-        <CardContent>
-          <h2 className="font-semibold text-gray-900 mb-4">🔥 Top 5 Mais Urgentes</h2>
-          {top5.length === 0 ? (
-            <p className="text-gray-400 text-sm text-center py-6">
-              Nenhuma diligência ativa. Ótimo trabalho!
+          <CardContent className="py-16 text-center">
+            <p className="text-5xl mb-4">📋</p>
+            <h2 className="text-lg font-semibold text-gray-800 mb-2">
+              Nenhuma diligência registrada
+            </h2>
+            <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">
+              Abra um processo com gargalo detectado e clique em{' '}
+              <span className="font-medium">"Gerar Diligência"</span> para começar.
             </p>
-          ) : (
-            <div className="space-y-2">
-              {top5.map((d) => (
-                <div
-                  key={d.id}
-                  className={`flex items-center justify-between p-3 rounded-lg border-l-4 cursor-pointer hover:opacity-90 ${
-                    d.prioridade === 'URGENTE'
-                      ? 'bg-red-50 border-l-red-500'
-                      : d.prioridade === 'ALTA'
-                      ? 'bg-yellow-50 border-l-yellow-400'
-                      : 'bg-gray-50 border-l-gray-300'
-                  }`}
-                  onClick={() => navigate(`/process/${d.cnj}`)}
-                >
-                  <div className="flex items-center gap-3">
-                    <span>{PRIORIDADE_ICON[d.prioridade]}</span>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {d.clienteNome ?? d.cnj}
-                      </p>
-                      <p className="text-xs text-gray-500">{ACAO_LABEL[d.acaoRecomendada]}</p>
+            <Button variant="secondary" size="sm" onClick={() => navigate('/meus-processos')}>
+              Ver Meus Processos
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Grid de métricas */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="py-5 text-center">
+                <p className="text-4xl font-bold text-red-600">{m.urgentes}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Urgentes</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-5 text-center">
+                <p className="text-4xl font-bold text-yellow-600">{m.pendentes}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Pendentes</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-5 text-center">
+                <p className="text-4xl font-bold text-blue-600">{m.emAndamento}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Em andamento</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-5 text-center">
+                <p className="text-4xl font-bold text-green-600">{m.concluidas}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Concluídas</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-5 text-center">
+                <p className="text-4xl font-bold text-gray-700">{m.mediaDias}d</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Média dias parado</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-5 text-center">
+                <p className="text-4xl font-bold text-purple-600">{m.acaoHoje}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Ação hoje</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Top 5 urgentes */}
+          <Card>
+            <CardContent>
+              <h2 className="font-semibold text-gray-900 mb-4">🔥 Top 5 Mais Urgentes</h2>
+              {top5.length === 0 ? (
+                <p className="text-gray-400 text-sm text-center py-6">
+                  Nenhuma diligência ativa. Ótimo trabalho!
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {top5.map((d) => (
+                    <div
+                      key={d.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border-l-4 cursor-pointer hover:opacity-90 ${
+                        d.prioridade === 'URGENTE'
+                          ? 'bg-red-50 border-l-red-500'
+                          : d.prioridade === 'ALTA'
+                          ? 'bg-yellow-50 border-l-yellow-400'
+                          : 'bg-gray-50 border-l-gray-300'
+                      }`}
+                      onClick={() => navigate(`/process/${d.cnj}`)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span>{PRIORIDADE_ICON[d.prioridade]}</span>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {d.clienteNome ?? d.cnj}
+                          </p>
+                          <p className="text-xs text-gray-500">{ACAO_LABEL[d.acaoRecomendada]}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-lg font-bold ${
+                          d.prioridade === 'URGENTE' ? 'text-red-600' : 'text-yellow-600'
+                        }`}>
+                          {d.diasParado}d
+                        </p>
+                        {d.retorno && (
+                          <p className="text-xs text-gray-400 italic max-w-40 truncate">{d.retorno}</p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-lg font-bold ${
-                      d.prioridade === 'URGENTE' ? 'text-red-600' : 'text-yellow-600'
-                    }`}>
-                      {d.diasParado}d
-                    </p>
-                    {d.retorno && (
-                      <p className="text-xs text-gray-400 italic max-w-40 truncate">{d.retorno}</p>
-                    )}
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   )
 }
