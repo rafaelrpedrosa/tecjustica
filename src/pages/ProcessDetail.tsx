@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Card, { CardContent } from '@/components/common/Card'
 import Badge from '@/components/common/Badge'
@@ -17,6 +17,14 @@ import { formatDateBR, formatCurrencyBR, formatCPFCNPJ } from '@/utils/format'
 import { CadastroProcessoModal } from '@/components/process/CadastroProcessoModal'
 import { verificarCadastro, monitorarProcesso } from '@/services/escritorio.service'
 import type { EscritorioProcesso } from '@/types/escritorio'
+
+// Constante fora do componente — evita recriar array a cada render
+const TABS_ITEMS = [
+  { label: 'Visão Geral', value: 'overview', content: null },
+  { label: 'Partes', value: 'parties', content: null },
+  { label: 'Movimentos', value: 'movements', content: null },
+  { label: 'Documentos', value: 'documents', content: null },
+]
 
 function getStatusColor(status: string): 'success' | 'default' | 'warning' | 'info' {
   if (status.toLowerCase().includes('tramitação')) return 'success'
@@ -40,12 +48,12 @@ const ProcessDetail: React.FC = () => {
     }
   }, [cnj])
 
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
     setToastMsg(msg)
     setTimeout(() => setToastMsg(null), 4000)
-  }
+  }, [])
 
-  const handleMonitorar = async () => {
+  const handleMonitorar = useCallback(async () => {
     if (!cnj) return
     setMonitorando(true)
     try {
@@ -56,7 +64,7 @@ const ProcessDetail: React.FC = () => {
     } finally {
       setMonitorando(false)
     }
-  }
+  }, [cnj, showToast])
 
   const processQuery = useProcess(cnj)
   const partiesQuery = useProcessParties(cnj)
@@ -74,12 +82,18 @@ const ProcessDetail: React.FC = () => {
   const movements = movementsQuery.data ?? []
   const documents = documentsQuery.data ?? []
 
-  const refetchAll = () => {
+  const refetchAll = useCallback(() => {
     processQuery.refetch()
     partiesQuery.refetch()
     movementsQuery.refetch()
     documentsQuery.refetch()
-  }
+  }, [processQuery, partiesQuery, movementsQuery, documentsQuery])
+
+  const handleModalSuccess = useCallback(() => {
+    setModalOpen(false)
+    if (cnj) verificarCadastro(cnj).then(setCadastro).catch(() => {})
+    showToast('Processo cadastrado no escritório!')
+  }, [cnj, showToast])
 
   if (loading) return <PageLoading />
 
@@ -165,7 +179,10 @@ const ProcessDetail: React.FC = () => {
 
       {/* Cache Status */}
       <CacheTimestamp
-        timestamp={processQuery.dataUpdatedAt ? new Date(processQuery.dataUpdatedAt).toISOString() : null}
+        timestamp={useMemo(
+          () => processQuery.dataUpdatedAt ? new Date(processQuery.dataUpdatedAt).toISOString() : null,
+          [processQuery.dataUpdatedAt]
+        )}
         isLoading={loading}
         onRefresh={refetchAll}
         ttlMinutes={24 * 60}
@@ -174,12 +191,7 @@ const ProcessDetail: React.FC = () => {
       {/* Tabs Section */}
       <Card>
         <Tabs
-          items={[
-            { label: 'Visão Geral', value: 'overview', content: null },
-            { label: 'Partes', value: 'parties', content: null },
-            { label: 'Movimentos', value: 'movements', content: null },
-            { label: 'Documentos', value: 'documents', content: null },
-          ]}
+          items={TABS_ITEMS}
           defaultValue={activeTab}
           onChange={setActiveTab}
         />
@@ -356,11 +368,7 @@ const ProcessDetail: React.FC = () => {
       <CadastroProcessoModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        onSuccess={() => {
-          setModalOpen(false)
-          if (cnj) verificarCadastro(cnj).then(setCadastro).catch(() => {})
-          showToast('Processo cadastrado no escritório!')
-        }}
+        onSuccess={handleModalSuccess}
         cnjInicial={cnj}
       />
     </div>
