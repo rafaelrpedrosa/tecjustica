@@ -15,7 +15,7 @@ const CACHE_TTL: Record<string, number> = {
 interface CacheEntry {
   timestamp: number
   ttl: number
-  data: any
+  data: unknown
 }
 
 const memoryCache = new Map<string, CacheEntry>()

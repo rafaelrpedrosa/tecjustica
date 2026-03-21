@@ -29,6 +29,18 @@ type Block =
   | { kind: 'cite';    text: string }
   | { kind: 'para';    text: string }
 
+/**
+ * Detecta linhas com encoding de fonte corrompido (PDFs do tribunal).
+ * Padrão típico: "Mo GERE EO o g LS PE / Salgueiro"
+ * — muitas palavras de 1-2 chars alfabéticos intercaladas com palavras normais.
+ */
+function isGarbledLine(text: string): boolean {
+  const words = text.trim().split(/\s+/)
+  if (words.length < 4) return false
+  const shortAlpha = words.filter(w => /^[A-Za-z]{1,2}$/.test(w))
+  return shortAlpha.length / words.length > 0.35
+}
+
 function buildBlocks(raw: string): Block[] {
   const rawLines = raw.split('\n')
   const blocks: Block[] = []
@@ -49,6 +61,9 @@ function buildBlocks(raw: string): Block[] {
 
     // Artefatos de OCR: muito curtos e sem contexto
     if (t.length <= 5 && !t.includes(':') && !/^\d+$/.test(t)) continue
+
+    // Encoding de fonte corrompido: filtra linhas com muitas palavras isoladas de 1-2 chars
+    if (isGarbledLine(t)) continue
 
     if (SECTION_RE.test(t))  { flushPara(); blocks.push({ kind: 'section', text: t }); continue }
     if (PARTY_RE.test(t))    { flushPara(); blocks.push({ kind: 'party',   text: t }); continue }
@@ -169,7 +184,17 @@ const DocumentViewer: React.FC = () => {
   const { documentId } = useParams<{ documentId: string }>()
   const navigate = useNavigate()
   const location = useLocation()
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  const cnj = (location.state as { cnj?: string } | null)?.cnj
+
+  const handleBack = () => {
+    if (cnj) {
+      navigate(`/process/${encodeURIComponent(cnj)}`, { state: { returnTab: 'documents' } })
+    } else {
+      navigate(-1)
+    }
+  }
   const [state, setState] = useState<DocumentViewerState>({
     document: null,
     content: null,
@@ -180,11 +205,15 @@ const DocumentViewer: React.FC = () => {
   })
 
   useEffect(() => {
-    const locationState = location.state as { cnj?: string } | null
-    const cnj = locationState?.cnj
-
     const loadDocument = async () => {
-      if (!documentId || !cnj) return
+      if (!documentId || !cnj) {
+        setState((s) => ({
+          ...s,
+          error: 'CNJ do processo não informado. Volte para o processo e tente novamente.',
+          loading: false,
+        }))
+        return
+      }
 
       try {
         setState((s) => ({ ...s, loading: true, error: null }))
@@ -211,10 +240,10 @@ const DocumentViewer: React.FC = () => {
         const document: Document = {
           id: documentId,
           processId: cnj,
-          titulo: docContent.metadata?.titulo || 'Documento do Processo',
-          tipo: docContent.metadata?.tipo || 'Documento',
-          dataCriacao: docContent.metadata?.dataCriacao || lastUpdated.split('T')[0],
-          paginas: docContent.metadata?.paginas || 1,
+          titulo: (docContent.metadata?.titulo as string) || 'Documento do Processo',
+          tipo: (docContent.metadata?.tipo as string) || 'Documento',
+          dataCriacao: (docContent.metadata?.dataCriacao as string) || lastUpdated.split('T')[0],
+          paginas: (docContent.metadata?.paginas as number) || 1,
           urlPdf: docUrl || '#',
           createdAt: lastUpdated,
           updatedAt: lastUpdated,
@@ -257,7 +286,6 @@ const DocumentViewer: React.FC = () => {
   }
 
   const handleOpenPDF = async () => {
-    const cnj = (location.state as { cnj?: string } | null)?.cnj
     if (!cnj || !documentId) return
     const proxyUrl = `${import.meta.env.VITE_API_BASE_URL}/api/documento-pdf/${encodeURIComponent(cnj)}/${encodeURIComponent(documentId)}`
 
@@ -278,8 +306,7 @@ const DocumentViewer: React.FC = () => {
     window.open(proxyUrl, '_blank')
   }
 
-  const locationState = location.state as { cnj?: string } | null
-  if (!locationState?.cnj) {
+  if (!cnj) {
     return (
       <div className="flex items-center justify-center py-16">
         <Empty
@@ -328,7 +355,7 @@ const DocumentViewer: React.FC = () => {
               </div>
             </div>
             <button
-              onClick={() => navigate(-1)}
+              onClick={handleBack}
               className="text-gray-400 hover:text-gray-600 transition-colors p-2"
               aria-label="Fechar visualizador"
             >
@@ -345,6 +372,9 @@ const DocumentViewer: React.FC = () => {
 
           {/* Action Buttons */}
           <div className="flex gap-3 pt-6 border-t border-gray-200">
+            <Button variant="secondary" size="sm" onClick={handleBack}>
+              ← Voltar ao processo
+            </Button>
             <Button
               variant="secondary"
               size="sm"
@@ -370,7 +400,6 @@ const DocumentViewer: React.FC = () => {
           timestamp={state.lastUpdated}
           isLoading={false}
           onRefresh={() => {
-            const cnj = (location.state as { cnj?: string } | null)?.cnj
             if (cnj && documentId) {
               setState((s) => ({ ...s, loading: true, error: null }))
               Promise.all([readDocument(cnj, documentId), getDocumentURL(cnj, documentId)])

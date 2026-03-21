@@ -6,6 +6,33 @@ import { getCacheKey, getCache, setCache, getTTLForType } from './cache'
 import { Process, Party, ProcessMovement } from '@/types/process'
 import * as mcpService from './mcp.service'
 
+interface LawyerMCP {
+  nome?: string
+  oab?: string
+  email?: string
+}
+
+interface PartyMCP {
+  cpf_cnpj?: string
+  nome?: string
+  tipo?: string
+  email?: string
+  endereco?: string
+  advogados?: LawyerMCP[]
+}
+
+interface MovementMCP {
+  id?: string
+  data?: string
+  timestamp?: string
+  tipo?: string
+  type?: string
+  descricao?: string
+  description?: string
+  orgao?: string
+  org?: string
+}
+
 const CACHE_TYPE = 'process_overview'
 
 /**
@@ -41,6 +68,7 @@ export async function getProcessByCNJ(cnj: string): Promise<Process | null> {
       valor: mcpData.valor ? parseFloat(mcpData.valor.toString()) : 0,
       dataAbertura: mcpData.data_abertura ? new Date(mcpData.data_abertura) : new Date(),
       juiz: mcpData.juiz || '',
+      vara: mcpData.vara || '',
       resumo: mcpData.resumo || JSON.stringify(mcpData),
     }
 
@@ -94,14 +122,14 @@ export async function getProcessParties(cnj: string): Promise<Party[]> {
     }
 
     // Converte resposta MCP para formato Party
-    const data: Party[] = (mcpData.POLO_ATIVO || []).concat(mcpData.POLO_PASSIVO || []).map((p: any, idx: number) => ({
+    const data: Party[] = (mcpData.POLO_ATIVO || []).concat(mcpData.POLO_PASSIVO || []).map((p: PartyMCP, idx: number) => ({
       id: p.cpf_cnpj || `party-${idx}`,
       nome: p.nome || '',
       tipo: p.tipo || 'PARTE',
       cpfCnpj: p.cpf_cnpj || '',
       email: p.email || '',
       endereco: p.endereco || '',
-      lawyers: (p.advogados || []).map((a: any, aidx: number) => ({
+      lawyers: (p.advogados || []).map((a: LawyerMCP, aidx: number) => ({
         id: `lawyer-${idx}-${aidx}`,
         nome: a.nome || '',
         oab: a.oab || '',
@@ -139,7 +167,7 @@ export async function getProcessMovements(cnj: string): Promise<ProcessMovement[
     }
 
     // Converte resposta MCP para formato ProcessMovement
-    const data: ProcessMovement[] = (Array.isArray(mcpData) ? mcpData : mcpData.movements || []).map((m: any) => ({
+    const data: ProcessMovement[] = (Array.isArray(mcpData) ? mcpData : mcpData.movements || []).map((m: MovementMCP) => ({
       id: m.id || `${m.data || m.timestamp}-${m.tipo || m.type || ''}-${(m.descricao || m.description || '').slice(0, 10)}`.replace(/\s/g, '-'),
       data: new Date(m.data || m.timestamp || Date.now()),
       tipo: m.tipo || m.type || '',

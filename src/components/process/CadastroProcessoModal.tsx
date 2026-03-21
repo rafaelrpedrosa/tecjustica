@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react'
 import Button from '@/components/common/Button'
 import { cadastrarProcesso, atualizarProcesso } from '@/services/escritorio.service'
+import { getPartiesMCP } from '@/services/mcp.service'
 import type { CadastroProcessoInput, EscritorioProcesso } from '@/types/escritorio'
+
+interface ParteSimples {
+  key: string
+  nome: string
+  tipo: string
+  polo: 'ATIVO' | 'PASSIVO' | 'TERCEIRO'
+}
 
 interface Props {
   isOpen: boolean
@@ -10,6 +18,22 @@ interface Props {
   cnjInicial?: string
   editando?: EscritorioProcesso
 }
+
+function flattenPartes(data: any): ParteSimples[] {
+  if (!data) return []
+  const result: ParteSimples[] = []
+  ;(data.POLO_ATIVO || []).forEach((p: any, i: number) => {
+    result.push({ key: `ativo-${i}`, nome: p.nome, tipo: p.tipo || 'AUTOR', polo: 'ATIVO' })
+  })
+  ;(data.POLO_PASSIVO || []).forEach((p: any, i: number) => {
+    result.push({ key: `passivo-${i}`, nome: p.nome, tipo: p.tipo || 'RÉU', polo: 'PASSIVO' })
+  })
+  ;(data.POLO_OUTROS || []).forEach((p: any, i: number) => {
+    result.push({ key: `outros-${i}`, nome: p.nome, tipo: p.tipo || 'TERCEIRO', polo: 'TERCEIRO' })
+  })
+  return result
+}
+
 
 const POLO_OPTIONS = [
   { value: 'ATIVO', label: 'Ativo (Autor / Reclamante)' },
@@ -23,11 +47,16 @@ export function CadastroProcessoModal({ isOpen, onClose, onSuccess, cnjInicial, 
     clienteNome: '',
     clientePolo: 'ATIVO',
     responsavel: '',
+    vara: '',
     monitorar: true,
     notas: '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [partes, setPartes] = useState<ParteSimples[]>([])
+  const [loadingPartes, setLoadingPartes] = useState(false)
+  const [parteSelecionada, setParteSelecionada] = useState<string | null>(null)
+  const [partesError, setPartesError] = useState(false)
 
   useEffect(() => {
     if (editando) {
@@ -36,6 +65,7 @@ export function CadastroProcessoModal({ isOpen, onClose, onSuccess, cnjInicial, 
         clienteNome: editando.clienteNome,
         clientePolo: editando.clientePolo,
         responsavel: editando.responsavel || '',
+        vara: editando.vara || '',
         monitorar: editando.monitorar,
         notas: editando.notas || '',
       })
@@ -43,7 +73,36 @@ export function CadastroProcessoModal({ isOpen, onClose, onSuccess, cnjInicial, 
       setForm(prev => ({ ...prev, cnj: cnjInicial || '' }))
     }
     setError(null)
+    setPartes([])
+    setParteSelecionada(null)
+    setPartesError(false)
   }, [isOpen, editando, cnjInicial])
+
+  // Busca partes quando o modal abre para cadastro (não edição)
+  useEffect(() => {
+    if (!isOpen || editando) return
+    const cnj = cnjInicial || form.cnj
+    if (!cnj) return
+    setLoadingPartes(true)
+    getPartiesMCP(cnj)
+      .then((data) => { setPartesError(false); setPartes(flattenPartes(data)) })
+      .catch(() => { setPartesError(true); setPartes([]) })
+      .finally(() => setLoadingPartes(false))
+  }, [isOpen, editando, cnjInicial])
+
+  function selecionarParte(parte: ParteSimples) {
+    setParteSelecionada(parte.key)
+    setForm(prev => ({
+      ...prev,
+      clienteNome: parte.nome,
+      clientePolo: parte.polo,
+    }))
+  }
+
+  function limparSelecao() {
+    setParteSelecionada(null)
+    setForm(prev => ({ ...prev, clienteNome: '', clientePolo: 'ATIVO' }))
+  }
 
   if (!isOpen) return null
 
@@ -61,6 +120,7 @@ export function CadastroProcessoModal({ isOpen, onClose, onSuccess, cnjInicial, 
           clienteNome: form.clienteNome,
           clientePolo: form.clientePolo,
           responsavel: form.responsavel,
+          vara: form.vara,
           monitorar: form.monitorar,
           notas: form.notas,
         })
@@ -70,8 +130,10 @@ export function CadastroProcessoModal({ isOpen, onClose, onSuccess, cnjInicial, 
       onSuccess()
       onClose()
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { error?: string } } }
-      const msg = axiosErr?.response?.data?.error || 'Erro ao salvar processo.'
+      const isAxiosShape = typeof err === 'object' && err !== null && 'response' in err
+      const msg = isAxiosShape
+        ? ((err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Erro ao salvar processo.')
+        : 'Erro ao salvar processo.'
       setError(msg)
     } finally {
       setLoading(false)
@@ -80,7 +142,7 @@ export function CadastroProcessoModal({ isOpen, onClose, onSuccess, cnjInicial, 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <h2 className="text-lg font-semibold text-gray-900">
@@ -90,22 +152,81 @@ export function CadastroProcessoModal({ isOpen, onClose, onSuccess, cnjInicial, 
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
 
           {/* CNJ */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Número CNJ <span className="text-red-500">*</span>
             </label>
-            <input
-              type="text"
-              value={form.cnj}
-              onChange={e => setForm(prev => ({ ...prev, cnj: e.target.value }))}
-              disabled={!!editando}
-              placeholder="0000000-00.0000.0.00.0000"
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={form.cnj}
+                onChange={e => setForm(prev => ({ ...prev, cnj: e.target.value }))}
+                disabled={!!editando}
+                placeholder="0000000-00.0000.0.00.0000"
+                className="flex-1 border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+              />
+              {!editando && !cnjInicial && (
+                <button
+                  type="button"
+                  disabled={!form.cnj.trim() || loadingPartes}
+                  onClick={() => {
+                    if (!form.cnj.trim()) return
+                    setLoadingPartes(true)
+                    setPartes([])
+                    setParteSelecionada(null)
+                    getPartiesMCP(form.cnj)
+                      .then((data) => { setPartesError(false); setPartes(flattenPartes(data)) })
+                      .catch(() => { setPartesError(true); setPartes([]) })
+                      .finally(() => setLoadingPartes(false))
+                  }}
+                  className="px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {loadingPartes ? '...' : 'Buscar partes'}
+                </button>
+              )}
+            </div>
           </div>
+
+          {/* Seleção de parte do processo */}
+          {!editando && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Selecionar o seu cliente no processo
+              </label>
+              {loadingPartes ? (
+                <p className="text-xs text-gray-400 py-2">Carregando partes...</p>
+              ) : partes.length > 0 ? (
+                <div className="space-y-1 max-h-40 overflow-y-auto border border-gray-200 rounded-md p-1">
+                  {partes.map(parte => (
+                    <button
+                      key={parte.key}
+                      type="button"
+                      onClick={() => parteSelecionada === parte.key ? limparSelecao() : selecionarParte(parte)}
+                      className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                        parteSelecionada === parte.key
+                          ? 'bg-blue-600 text-white'
+                          : 'hover:bg-gray-100 text-gray-800'
+                      }`}
+                    >
+                      <span className="font-medium">{parte.nome}</span>
+                      <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${
+                        parteSelecionada === parte.key ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {parte.tipo}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : partesError ? (
+                <p className="text-xs text-red-400 py-1">Erro ao buscar partes — preencha manualmente abaixo.</p>
+              ) : (
+                <p className="text-xs text-gray-400 py-1">Partes não disponíveis — preencha manualmente abaixo.</p>
+              )}
+            </div>
+          )}
 
           {/* Nome do cliente */}
           <div>
@@ -147,6 +268,20 @@ export function CadastroProcessoModal({ isOpen, onClose, onSuccess, cnjInicial, 
               value={form.responsavel || ''}
               onChange={e => setForm(prev => ({ ...prev, responsavel: e.target.value }))}
               placeholder="Ex: Dr. Rafael Pedrosa"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Vara */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Vara <span className="text-gray-400 font-normal">(opcional)</span>
+            </label>
+            <input
+              type="text"
+              value={form.vara || ''}
+              onChange={e => setForm(prev => ({ ...prev, vara: e.target.value }))}
+              placeholder="Ex: JEF Salgueiro/PE, 3ª Vara Cível..."
               className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>

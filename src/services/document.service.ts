@@ -6,6 +6,27 @@ import { getCacheKey, getCache, setCache, getTTLForType } from './cache'
 import { Document } from '@/types/document'
 import * as mcpService from './mcp.service'
 
+interface DocumentMCP {
+  id?: string
+  doc_id_externo?: string
+  titulo?: string
+  name?: string
+  tipo?: string
+  type?: string
+  data_criacao?: string
+  paginas?: number
+  pages?: number
+  url?: string
+  url_pdf?: string
+}
+
+interface DocumentMetadataMCP {
+  conteudo?: string
+  texto_extraido?: string
+  metadata?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 /**
  * Lista documentos de um processo
  */
@@ -28,7 +49,7 @@ export async function listDocuments(cnj: string): Promise<Document[]> {
 
     // Converte resposta MCP para formato Document
     const now = new Date().toISOString()
-    const data: Document[] = (Array.isArray(mcpData) ? mcpData : mcpData.documents || []).map((d: any) => ({
+    const data: Document[] = (Array.isArray(mcpData) ? mcpData : mcpData.documents || []).map((d: DocumentMCP) => ({
       id: d.id || d.doc_id_externo || '',
       processId: cnj,
       titulo: d.titulo || d.name || '',
@@ -56,9 +77,9 @@ export async function listDocuments(cnj: string): Promise<Document[]> {
 export async function readDocument(
   cnj: string,
   docId: string
-): Promise<{ conteudo: string; metadata: any } | null> {
+): Promise<{ conteudo: string; metadata: Record<string, unknown> } | null> {
   try {
-    const mcpData = await mcpService.readDocumentMCP(cnj, docId)
+    const mcpData = await mcpService.readDocumentMCP(cnj, docId) as DocumentMetadataMCP | null
 
     if (!mcpData) {
       console.error(`Documento ${docId} não encontrado`)
@@ -67,7 +88,7 @@ export async function readDocument(
 
     return {
       conteudo: mcpData.conteudo || mcpData.texto_extraido || '',
-      metadata: mcpData.metadata || mcpData,
+      metadata: (mcpData.metadata ?? mcpData) as Record<string, unknown>,
     }
   } catch (error) {
     console.error(`Erro ao ler documento ${docId}:`, error)

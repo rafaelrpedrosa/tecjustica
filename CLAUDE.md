@@ -161,6 +161,18 @@ Each MCP tool has its own parser in the backend (`parseVisaoGeral`, `parseMovime
 ### Backend Startup
 `backend-server.js` calls `process.exit(1)` if `TECJUSTICA_AUTH_TOKEN` is missing. Network errors in the browser console are expected when the backend is not running.
 
+### Backend: Reiniciar para Novas Rotas
+`backend-server.js` não tem hot-reload. Após adicionar novos endpoints, parar e reiniciar o servidor backend — novas rotas retornam 404 até reiniciar.
+
+### Formato da Resposta de Partes do MCP
+`getPartiesMCP(cnj)` (backend `/api/process/:cnj/partes`) retorna `{ POLO_ATIVO: [{nome, tipo, cpf_cnpj}], POLO_PASSIVO: [...], POLO_OUTROS: [...] }`, não um array flat. Achatar antes de usar.
+
+### Padrão para Modais Altos
+Para modais com muitos campos que podem transbordar a tela: adicionar `max-h-[90vh] flex flex-col` no container do modal e `overflow-y-auto flex-1` no `<form>` interno.
+
+### Escritório Alertas — Marcar Todos como Lidos
+`PUT /api/escritorio/alertas/lidos/cnj/:cnj` marca todos os alertas não lidos de um CNJ como lidos. Usar antes de navegar para o detalhe do processo a partir de MeusProcessos (atualização otimista no estado local + chamada API).
+
 ---
 
-**Last Updated**: 2026-03-21
+**Last Updated**: 2026-03-21 (sessão: alertas escritório, seleção de partes no modal)

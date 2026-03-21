@@ -46,6 +46,10 @@ export async function marcarAlertaLido(id: string): Promise<void> {
   await apiClient.put(`/api/escritorio/alertas/${id}/lido`)
 }
 
+export async function marcarAlertasLidosPorCNJ(cnj: string): Promise<void> {
+  await apiClient.put(`/api/escritorio/alertas/lidos/cnj/${encodeURIComponent(cnj)}`)
+}
+
 export async function verificarCadastro(cnj: string): Promise<EscritorioProcesso | null> {
   try {
     const processos = await listarProcessos()

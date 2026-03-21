@@ -150,6 +150,8 @@ function audit(req, acao, tipoDado, referenciaId) {
     user_agent: userAgent,
   }).then(({ error }) => {
     if (error) console.warn(`[audit] Falha ao registrar ${acao}:`, error.message);
+  }).catch((err) => {
+    console.warn(`[audit] Exceção ao registrar ${acao}:`, err.message);
   });
 }
 
@@ -169,7 +171,7 @@ async function initializeMCPClient() {
 
   try {
     console.log(`🔌 Conectando ao MCP Server: ${MCP_SERVER_URL}`);
-    console.log(`   AUTH Token: configurado ✓`);
+    console.log(`   AUTH Token: ${AUTH_TOKEN ? 'presente ✓' : '⚠️ AUSENTE'}`);
 
     // Usar transporte Streamable HTTP (protocolo MCP moderno)
     const transport = new StreamableHTTPClientTransport(
@@ -249,7 +251,7 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
  *  - reconexão automática ao expirar sessão
  */
 async function callMCPTool(toolName, toolInput) {
-  let lastError;
+  let lastError = null;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const backoff = BACKOFF_BASE_MS * Math.pow(2, attempt - 1); // 500, 1000, 2000
@@ -308,6 +310,7 @@ const CNJ_RE = /^\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/;
 function validateCNJ(cnj) {
   if (!cnj || typeof cnj !== 'string') return { ok: false, error: 'CNJ ausente' };
   const clean = cnj.trim();
+  if (clean.length < 7 || clean.length > 50) return { ok: false, error: 'CNJ com comprimento inválido' };
   if (!CNJ_RE.test(clean)) return { ok: false, error: `CNJ inválido — formato esperado: NNNNNNN-DD.AAAA.J.TT.OOOO` };
   return { ok: true, value: clean };
 }
@@ -481,17 +484,29 @@ function extractField(text, ...keys) {
  */
 function parseVisaoGeral(text, numero_processo) {
   const tribunalFull = extractField(text, 'Tribunal', 'tribunal');
-  const tribunal     = tribunalFull.split('|')[0].trim();
+  const parts        = tribunalFull.split('|').map(s => s.trim());
+  const tribunal     = parts[0];
+  // Vara: 3ª parte do campo Tribunal (ex: "TRF5 | 1o Grau | JEF - PERNAMBUCO")
+  const vara         = parts.length >= 3 ? parts[2] : '';
   const statusFull   = extractField(text, 'Status', 'status', 'Situação', 'Situacao');
   const status       = statusFull.split('|')[0].trim();
 
-  // Valor: aceita "R$ 1.234,56", "R$1234.56", "1,234.56"
+  // Valor: detecta formato US (1,234.56) ou BR (1.234,56) pelo último separador
   const valorMatch = text.match(/Valor\s*(?:da\s+Causa)?\s*:\s*R?\$?\s*([\d.,]+)/i);
   let valor = 0;
   if (valorMatch) {
     const raw = valorMatch[1];
-    // Normaliza: remove separador de milhar, mantém decimal
-    valor = parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0;
+    const lastDot   = raw.lastIndexOf('.');
+    const lastComma = raw.lastIndexOf(',');
+    let normalized;
+    if (lastDot > lastComma) {
+      // Formato US: ponto é decimal → remove vírgulas
+      normalized = raw.replace(/,/g, '');
+    } else {
+      // Formato BR: vírgula é decimal → remove pontos, vírgula → ponto
+      normalized = raw.replace(/\./g, '').replace(',', '.');
+    }
+    valor = parseFloat(normalized) || 0;
   }
 
   // Data: aceita YYYY-MM-DD e DD/MM/YYYY
@@ -514,6 +529,7 @@ function parseVisaoGeral(text, numero_processo) {
     assunto:        extractField(text, 'Assunto', 'assunto', 'Matéria'),
     status:         status || 'Em andamento',
     juiz:           extractField(text, 'Juiz', 'juiz', 'Magistrado'),
+    vara,
     valor,
     data_abertura,
     resumo:         text,
@@ -1076,9 +1092,18 @@ app.get('/api/documento-pdf/:numero_processo/:documento_id', pdfLimiter, async (
     res.setHeader('Content-Disposition', contentDisposition || `inline; filename="${documento_id}.pdf"`);
     if (contentLength) res.setHeader('Content-Length', contentLength);
 
-    // Stream do PDF diretamente ao cliente
+    // Stream do PDF diretamente ao cliente (máx. 10.000 chunks ~= ~500MB)
     const reader = pdfResponse.body.getReader();
+    const MAX_CHUNKS = 10_000;
+    let chunks = 0;
     const pump = async () => {
+      if (chunks++ >= MAX_CHUNKS) {
+        console.error('❌ PDF stream excedeu limite de chunks — abortando');
+        reader.cancel().catch(() => {});
+        if (!res.headersSent) res.status(500).json({ error: 'PDF muito grande ou stream corrompido' });
+        else res.end();
+        return;
+      }
       const { done, value } = await reader.read();
       if (done) { res.end(); return; }
       res.write(Buffer.from(value));
@@ -1087,7 +1112,7 @@ app.get('/api/documento-pdf/:numero_processo/:documento_id', pdfLimiter, async (
     await pump();
 
   } catch (error) {
-    console.error('Erro no proxy PDF:', error);
+    console.error('Erro no proxy PDF:', error.message);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Erro interno ao processar PDF' });
     }
@@ -1115,10 +1140,15 @@ app.get('/api/escritorio/processos', async (req, res) => {
 
     // Busca dados dos processos e contagem de alertas não lidos
     const cnjs = escritorio.map(e => e.cnj);
-    const [processosRes, alertasRes] = await Promise.all([
+    const [processosResult, alertasResult] = await Promise.allSettled([
       supabase.from('processes').select('cnj,tribunal,classe,assunto,status,data_abertura').in('cnj', cnjs),
       supabase.from('escritorio_alertas').select('cnj').eq('lido', false).in('cnj', cnjs),
     ]);
+
+    const processosRes = processosResult.status === 'fulfilled' ? processosResult.value : { data: [] };
+    const alertasRes  = alertasResult.status  === 'fulfilled' ? alertasResult.value  : { data: [] };
+    if (processosResult.status === 'rejected') console.warn('[escritorio/processos] Falha ao buscar processes:', processosResult.reason?.message);
+    if (alertasResult.status  === 'rejected') console.warn('[escritorio/processos] Falha ao buscar alertas:',  alertasResult.reason?.message);
 
     const processosMap = {};
     (processosRes.data || []).forEach(p => { processosMap[p.cnj] = p; });
@@ -1134,6 +1164,7 @@ app.get('/api/escritorio/processos', async (req, res) => {
       clienteNome: e.cliente_nome,
       clientePolo: e.cliente_polo,
       responsavel: e.responsavel,
+      vara: e.vara,
       monitorar: e.monitorar,
       notas: e.notas,
       ultimaVerificacao: e.ultima_verificacao,
@@ -1160,7 +1191,7 @@ app.post('/api/escritorio/processos', mcpLimiter, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
 
-    const { cnj, clienteNome, clientePolo, responsavel, monitorar = true, notas } = req.body;
+    const { cnj, clienteNome, clientePolo, responsavel, vara, monitorar = true, notas } = req.body;
 
     if (!cnj || !clienteNome || !clientePolo) {
       return res.status(400).json({ error: 'cnj, clienteNome e clientePolo são obrigatórios' });
@@ -1181,6 +1212,7 @@ app.post('/api/escritorio/processos', mcpLimiter, async (req, res) => {
         cliente_nome: clienteNome,
         cliente_polo: clientePolo,
         responsavel: responsavel || null,
+        vara: vara || null,
         monitorar,
         notas: notas || null,
       })
@@ -1222,12 +1254,13 @@ app.post('/api/escritorio/processos', mcpLimiter, async (req, res) => {
       clienteNome: cadastro.cliente_nome,
       clientePolo: cadastro.cliente_polo,
       responsavel: cadastro.responsavel,
+      vara: cadastro.vara,
       monitorar: cadastro.monitorar,
       notas: cadastro.notas,
       createdAt: cadastro.created_at,
     });
   } catch (error) {
-    console.error('Erro POST escritorio/processos:', error);
+    console.error('Erro POST escritorio/processos:', error.message);
     res.status(500).json({ error: 'Erro ao cadastrar processo' });
   }
 });
@@ -1246,7 +1279,7 @@ app.put('/api/escritorio/processos/:cnj', async (req, res) => {
     if (!cnjV.ok) return res.status(400).json({ error: cnjV.error });
     const cnj = cnjV.value;
     const updates = {};
-    const { clienteNome, clientePolo, responsavel, monitorar, notas } = req.body;
+    const { clienteNome, clientePolo, responsavel, vara, monitorar, notas } = req.body;
 
     if (clienteNome !== undefined) updates.cliente_nome = clienteNome;
     if (clientePolo !== undefined) {
@@ -1256,6 +1289,7 @@ app.put('/api/escritorio/processos/:cnj', async (req, res) => {
       updates.cliente_polo = clientePolo;
     }
     if (responsavel !== undefined) updates.responsavel = responsavel;
+    if (vara !== undefined) updates.vara = vara;
     if (monitorar !== undefined) updates.monitorar = monitorar;
     if (notas !== undefined) updates.notas = notas;
 
@@ -1266,12 +1300,12 @@ app.put('/api/escritorio/processos/:cnj', async (req, res) => {
       .select()
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return res.status(500).json({ error: 'Erro ao atualizar processo' });
     if (!data) return res.status(404).json({ error: 'Processo não encontrado no escritório' });
 
     res.json({ success: true, cnj });
   } catch (error) {
-    console.error('Erro PUT escritorio/processos:', error);
+    console.error('Erro PUT escritorio/processos:', error.message);
     res.status(500).json({ error: 'Erro ao atualizar processo' });
   }
 });
@@ -1293,10 +1327,10 @@ app.delete('/api/escritorio/processos/:cnj', async (req, res) => {
       .delete()
       .eq('cnj', cnj);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return res.status(500).json({ error: 'Erro ao remover processo' });
     res.json({ success: true, cnj });
   } catch (error) {
-    console.error('Erro DELETE escritorio/processos:', error);
+    console.error('Erro DELETE escritorio/processos:', error.message);
     res.status(500).json({ error: 'Erro ao remover processo' });
   }
 });
@@ -1309,7 +1343,10 @@ app.post('/api/escritorio/monitorar/:cnj', mcpLimiter, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
 
-    const cnj = decodeURIComponent(req.params.cnj);
+    const cnjRaw = decodeURIComponent(req.params.cnj);
+    const cnjV = validateCNJ(cnjRaw);
+    if (!cnjV.ok) return res.status(400).json({ error: cnjV.error });
+    const cnj = cnjV.value;
 
     // Busca registro do escritório
     const { data: registro, error: regError } = await supabase
@@ -1351,29 +1388,33 @@ app.post('/api/escritorio/monitorar/:cnj', mcpLimiter, async (req, res) => {
           : movimentos.slice(0, 1); // Primeira vez: só o mais recente
 
         for (const mov of movimentosNovos.slice(0, 3)) {
-          const descricao = `Novo movimento em ${mov.data ? new Date(mov.data).toLocaleDateString('pt-BR') : 'data desconhecida'}: ${(mov.descricao || '').slice(0, 200)}`;
-          const { data: alerta } = await supabase
+          const dataFormatada = mov.data ? new Date(mov.data ?? '').toLocaleDateString('pt-BR') : 'data desconhecida';
+          const descricao = `Novo movimento em ${dataFormatada}: ${(mov.descricao || '').slice(0, 200)}`;
+          const { data: alerta, error: alertaError } = await supabase
             .from('escritorio_alertas')
             .insert({ cnj, tipo: 'NOVO_MOVIMENTO', descricao, lido: false })
             .select()
             .single();
-          if (alerta) alertasCriados.push(alerta);
+          if (alertaError) console.warn('⚠️ Erro ao criar alerta:', alertaError.message);
+          else if (alerta) alertasCriados.push(alerta);
         }
 
         // Atualiza último hash e data de verificação
-        await supabase
+        const { error: updateHashError } = await supabase
           .from('escritorio_processos')
           .update({
             ultimo_hash_movimento: hashMaisRecente,
             ultima_verificacao: new Date().toISOString(),
           })
           .eq('cnj', cnj);
+        if (updateHashError) console.warn('⚠️ Erro ao atualizar hash:', updateHashError.message);
       } else {
         // Sem novidades — só atualiza data de verificação
-        await supabase
+        const { error: updateVerifError } = await supabase
           .from('escritorio_processos')
           .update({ ultima_verificacao: new Date().toISOString() })
           .eq('cnj', cnj);
+        if (updateVerifError) console.warn('⚠️ Erro ao atualizar ultima_verificacao:', updateVerifError.message);
       }
     }
 
@@ -1386,7 +1427,7 @@ app.post('/api/escritorio/monitorar/:cnj', mcpLimiter, async (req, res) => {
         : 'Nenhuma atualização desde a última verificação',
     });
   } catch (error) {
-    console.error('Erro POST escritorio/monitorar/:cnj:', error);
+    console.error('Erro POST escritorio/monitorar/:cnj:', error.message);
     res.status(500).json({ error: 'Erro ao monitorar processo' });
   }
 });
@@ -1464,11 +1505,11 @@ app.get('/api/escritorio/alertas', async (req, res) => {
       .order('created_at', { ascending: false })
       .limit(50);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return res.status(500).json({ error: 'Erro ao buscar alertas' });
 
     res.json(data || []);
   } catch (error) {
-    console.error('Erro GET escritorio/alertas:', error);
+    console.error('Erro GET escritorio/alertas:', error.message);
     res.status(500).json({ error: 'Erro ao buscar alertas' });
   }
 });
@@ -1486,11 +1527,34 @@ app.put('/api/escritorio/alertas/:id/lido', async (req, res) => {
       .update({ lido: true })
       .eq('id', req.params.id);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) return res.status(500).json({ error: 'Erro ao marcar alerta como lido' });
     res.json({ success: true });
   } catch (error) {
-    console.error('Erro PUT alertas/lido:', error);
+    console.error('Erro PUT alertas/lido:', error.message);
     res.status(500).json({ error: 'Erro ao marcar alerta como lido' });
+  }
+});
+
+/**
+ * PUT /api/escritorio/alertas/lidos/cnj/:cnj
+ * Marca todos os alertas não lidos de um processo como lidos
+ */
+app.put('/api/escritorio/alertas/lidos/cnj/:cnj', async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+
+    const cnj = decodeURIComponent(req.params.cnj);
+    const { error } = await supabase
+      .from('escritorio_alertas')
+      .update({ lido: true })
+      .eq('cnj', cnj)
+      .eq('lido', false);
+
+    if (error) return res.status(500).json({ error: 'Erro ao marcar alertas como lidos' });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro PUT alertas/lidos/cnj:', error.message);
+    res.status(500).json({ error: 'Erro ao marcar alertas como lidos' });
   }
 });
 

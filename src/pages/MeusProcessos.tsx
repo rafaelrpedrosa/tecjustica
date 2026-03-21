@@ -10,8 +10,11 @@ import {
   removerProcesso,
   monitorarProcesso,
   monitorarTodos,
+  marcarAlertasLidosPorCNJ,
 } from '@/services/escritorio.service'
 import type { EscritorioProcesso } from '@/types/escritorio'
+
+interface ToastEntry { id: number; msg: string }
 
 const POLO_LABELS: Record<string, string> = {
   ATIVO: 'Ativo',
@@ -40,8 +43,9 @@ export default function MeusProcessos() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editando, setEditando] = useState<EscritorioProcesso | undefined>()
   const [monitorando, setMonitorando] = useState<string | null>(null)
-  const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([])
+  const [toasts, setToasts] = useState<ToastEntry[]>([])
   const toastIdRef = useRef(0)
+  const toastTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
   const carregar = useCallback(async () => {
     try {
@@ -58,11 +62,15 @@ export default function MeusProcessos() {
 
   useEffect(() => { carregar() }, [carregar])
 
-  const showToast = (msg: string) => {
+  // Cleanup de todos os timers de toast ao desmontar
+  useEffect(() => () => { toastTimersRef.current.forEach(clearTimeout) }, [])
+
+  const showToast = useCallback((msg: string) => {
     const id = ++toastIdRef.current
     setToasts(prev => [...prev, { id, msg }])
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
-  }
+    const timer = setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
+    toastTimersRef.current.push(timer)
+  }, [])
 
   const handleRemover = async (cnj: string, clienteNome: string) => {
     if (!confirm(`Remover "${clienteNome}" (${cnj}) do cadastro do escritório?`)) return
@@ -75,7 +83,7 @@ export default function MeusProcessos() {
     }
   }
 
-  const handleMonitorar = async (cnj: string) => {
+  const handleMonitorar = useCallback(async (cnj: string) => {
     setMonitorando(cnj)
     try {
       const resultado = await monitorarProcesso(cnj)
@@ -86,7 +94,15 @@ export default function MeusProcessos() {
     } finally {
       setMonitorando(null)
     }
-  }
+  }, [carregar, showToast])
+
+  const handleVer = useCallback(async (proc: EscritorioProcesso) => {
+    if ((proc.alertasNaoLidos || 0) > 0) {
+      try { await marcarAlertasLidosPorCNJ(proc.cnj) } catch { /* ignora */ }
+      setProcessos(prev => prev.map(p => p.cnj === proc.cnj ? { ...p, alertasNaoLidos: 0 } : p))
+    }
+    navigate(`/process/${encodeURIComponent(proc.cnj)}`)
+  }, [navigate])
 
   const handleMonitorarTodos = async () => {
     setMonitorando('todos')
@@ -205,7 +221,7 @@ export default function MeusProcessos() {
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <button
-                      onClick={() => navigate(`/process/${encodeURIComponent(proc.cnj)}`)}
+                      onClick={() => handleVer(proc)}
                       className="text-blue-600 hover:underline font-mono text-sm font-medium"
                     >
                       {proc.cnj}
@@ -254,7 +270,7 @@ export default function MeusProcessos() {
                   <Button
                     variant="primary"
                     size="sm"
-                    onClick={() => navigate(`/process/${encodeURIComponent(proc.cnj)}`)}
+                    onClick={() => handleVer(proc)}
                   >
                     Ver
                   </Button>

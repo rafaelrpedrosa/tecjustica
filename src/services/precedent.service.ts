@@ -6,10 +6,25 @@ import { getCacheKey, getCache, setCache, getTTLForType } from './cache'
 import { PrecedentSearchResult, Precedent } from '@/types/precedent'
 import * as mcpService from './mcp.service'
 
+interface PrecedentMCP {
+  id?: string
+  ementa?: string
+  title?: string
+  summary?: string
+  tese?: string
+  thesis?: string
+  description?: string
+  tribunal?: string
+  orgao?: string
+  tipo?: string
+  type?: string
+  status?: string
+}
+
 /**
  * Hash simples de query para cache (browser-friendly)
  */
-function hashQuery(termo: string, filtros?: any): string {
+function hashQuery(termo: string, filtros?: { tribunais?: string[]; tipos?: string[] }): string {
   const queryStr = JSON.stringify({ termo, filtros })
   let hash = 0
   for (let i = 0; i < queryStr.length; i++) {
@@ -52,7 +67,7 @@ export async function searchPrecedents(
     }
 
     // Converte resposta MCP para formato Precedent
-    const resultados: Precedent[] = (Array.isArray(mcpData) ? mcpData : mcpData.nodes || mcpData.resultados || []).map((p: any) => ({
+    const resultados: Precedent[] = (Array.isArray(mcpData) ? mcpData : mcpData.nodes || mcpData.resultados || []).map((p: PrecedentMCP) => ({
       id: p.id || `${p.tribunal || ''}-${p.tipo || ''}-${(p.ementa || '').slice(0, 20)}`.replace(/\s/g, '-'),
       ementa: p.ementa || p.title || p.summary || '',
       tese: p.tese || p.thesis || p.description || '',

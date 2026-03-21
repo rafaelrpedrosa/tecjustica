@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import Card, { CardContent } from '@/components/common/Card'
 import Badge from '@/components/common/Badge'
 import Tabs from '@/components/common/Tabs'
@@ -20,10 +20,10 @@ import type { EscritorioProcesso } from '@/types/escritorio'
 
 // Constante fora do componente — evita recriar array a cada render
 const TABS_ITEMS = [
-  { label: 'Visão Geral', value: 'overview', content: null },
-  { label: 'Partes', value: 'parties', content: null },
-  { label: 'Movimentos', value: 'movements', content: null },
-  { label: 'Documentos', value: 'documents', content: null },
+  { label: 'Visão Geral', value: 'overview' },
+  { label: 'Partes', value: 'parties' },
+  { label: 'Movimentos', value: 'movements' },
+  { label: 'Documentos', value: 'documents' },
 ]
 
 function getStatusColor(status: string): 'success' | 'default' | 'warning' | 'info' {
@@ -36,11 +36,15 @@ function getStatusColor(status: string): 'success' | 'default' | 'warning' | 'in
 const ProcessDetail: React.FC = () => {
   const { cnj } = useParams<{ cnj: string }>()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('overview')
+  const location = useLocation()
+  const [activeTab, setActiveTab] = useState(
+    (location.state as { returnTab?: string } | null)?.returnTab || 'overview'
+  )
   const [cadastro, setCadastro] = useState<EscritorioProcesso | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [monitorando, setMonitorando] = useState(false)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (cnj) {
@@ -48,9 +52,13 @@ const ProcessDetail: React.FC = () => {
     }
   }, [cnj])
 
+  // Cleanup do timer ao desmontar
+  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current) }, [])
+
   const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     setToastMsg(msg)
-    setTimeout(() => setToastMsg(null), 4000)
+    toastTimerRef.current = setTimeout(() => setToastMsg(null), 4000)
   }, [])
 
   const handleMonitorar = useCallback(async () => {
@@ -89,11 +97,15 @@ const ProcessDetail: React.FC = () => {
     documentsQuery.refetch()
   }, [processQuery, partiesQuery, movementsQuery, documentsQuery])
 
+  const cacheTimestamp = useMemo(
+    () => processQuery.dataUpdatedAt ? new Date(processQuery.dataUpdatedAt).toISOString() : null,
+    [processQuery.dataUpdatedAt]
+  )
+
   const handleModalSuccess = useCallback(() => {
     setModalOpen(false)
-    if (cnj) verificarCadastro(cnj).then(setCadastro).catch(() => {})
-    showToast('Processo cadastrado no escritório!')
-  }, [cnj, showToast])
+    navigate('/meus-processos')
+  }, [navigate])
 
   if (loading) return <PageLoading />
 
@@ -161,7 +173,7 @@ const ProcessDetail: React.FC = () => {
             </div>
             <div>
               <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold">
-                Valor
+                Valor da Causa
               </p>
               <p className="text-gray-900 font-medium mt-2">
                 {formatCurrencyBR(process.valor)}
@@ -169,9 +181,9 @@ const ProcessDetail: React.FC = () => {
             </div>
             <div>
               <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold">
-                Juiz
+                Vara
               </p>
-              <p className="text-gray-900 font-medium mt-2">{process.juiz || '—'}</p>
+              <p className="text-gray-900 font-medium mt-2">{cadastro?.vara || process.vara || '—'}</p>
             </div>
           </div>
         </CardContent>
@@ -179,10 +191,7 @@ const ProcessDetail: React.FC = () => {
 
       {/* Cache Status */}
       <CacheTimestamp
-        timestamp={useMemo(
-          () => processQuery.dataUpdatedAt ? new Date(processQuery.dataUpdatedAt).toISOString() : null,
-          [processQuery.dataUpdatedAt]
-        )}
+        timestamp={cacheTimestamp}
         isLoading={loading}
         onRefresh={refetchAll}
         ttlMinutes={24 * 60}
