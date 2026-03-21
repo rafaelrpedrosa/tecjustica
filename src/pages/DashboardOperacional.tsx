@@ -70,48 +70,66 @@ const DashboardOperacional: React.FC = () => {
         </div>
       </div>
 
-      {/* Grid de métricas */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      {lista.length === 0 ? (
         <Card>
-          <CardContent className="py-5 text-center">
-            <p className="text-4xl font-bold text-red-600">{m.urgentes}</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Urgentes</p>
+          <CardContent className="py-16 text-center">
+            <p className="text-5xl mb-4">📋</p>
+            <h2 className="text-lg font-semibold text-gray-800 mb-2">
+              Nenhuma diligência registrada
+            </h2>
+            <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">
+              Abra um processo com gargalo detectado e clique em{' '}
+              <span className="font-medium">"Gerar Diligência"</span> para começar.
+            </p>
+            <Button variant="secondary" size="sm" onClick={() => navigate('/meus-processos')}>
+              Ver Meus Processos
+            </Button>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="py-5 text-center">
-            <p className="text-4xl font-bold text-yellow-600">{m.pendentes}</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Pendentes</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-5 text-center">
-            <p className="text-4xl font-bold text-blue-600">{m.emAndamento}</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Em andamento</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-5 text-center">
-            <p className="text-4xl font-bold text-green-600">{m.concluidas}</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Concluídas</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-5 text-center">
-            <p className="text-4xl font-bold text-gray-700">{m.mediaDias}d</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Média dias parado</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-5 text-center">
-            <p className="text-4xl font-bold text-purple-600">{m.acaoHoje}</p>
-            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Ação hoje</p>
-          </CardContent>
-        </Card>
-      </div>
+      ) : (
+        <>
+          {/* Grid de métricas */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="py-5 text-center">
+                <p className="text-4xl font-bold text-red-600">{m.urgentes}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Urgentes</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-5 text-center">
+                <p className="text-4xl font-bold text-yellow-600">{m.pendentes}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Pendentes</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-5 text-center">
+                <p className="text-4xl font-bold text-blue-600">{m.emAndamento}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Em andamento</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-5 text-center">
+                <p className="text-4xl font-bold text-green-600">{m.concluidas}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Concluídas</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-5 text-center">
+                <p className="text-4xl font-bold text-gray-700">{m.mediaDias}d</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Média dias parado</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-5 text-center">
+                <p className="text-4xl font-bold text-purple-600">{m.acaoHoje}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Ação hoje</p>
+              </CardContent>
+            </Card>
+          </div>
 
-      {/* Top 5 urgentes */}
-      <Card>
+          {/* Top 5 urgentes */}
+          <Card>
         <CardContent>
           <h2 className="font-semibold text-gray-900 mb-4">🔥 Top 5 Mais Urgentes</h2>
           {top5.length === 0 ? (
@@ -157,6 +175,8 @@ const DashboardOperacional: React.FC = () => {
           )}
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   )
 }
