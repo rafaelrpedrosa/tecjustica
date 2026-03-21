@@ -1,1 +1,34 @@
+# Secrets
 .env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
+backend.pid
+tmp-*.err
+tmp-*.out
+
+# Legacy / dev
+backend-server-simple.js
+backend-server-v2.js
+proxy-server.js
+proxy.log
+snapshot1.txt
+test-results/
+IMPLEMENTATION_STATUS.md
+README_IMPLEMENTATION.md
+dev-server.log
+backend-output.log
+backend-simple.log
+backend-v2.log
+
+# Tooling
+.playwright-mcp/

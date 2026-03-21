@@ -20,7 +20,7 @@ const backendClient = axios.create({
  */
 async function callBackendAPI(endpoint: string, data: Record<string, any> = {}) {
   try {
-    console.log(`📞 Chamando endpoint: ${endpoint}`, data)
+    if (import.meta.env.DEV) console.log(`📞 Chamando endpoint: ${endpoint}`)
 
     const response = await backendClient.post(endpoint, data)
 
