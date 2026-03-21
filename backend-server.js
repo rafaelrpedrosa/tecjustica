@@ -1029,6 +1029,395 @@ app.get('/api/documento-pdf/:numero_processo/:documento_id', pdfLimiter, async (
   }
 });
 
+// ============================================================
+// ESCRITÓRIO — Cadastro e Monitoramento de Processos
+// ============================================================
+
+/**
+ * GET /api/escritorio/processos
+ * Lista todos os processos cadastrados no escritório
+ */
+app.get('/api/escritorio/processos', async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+
+    const { data: escritorio, error } = await supabase
+      .from('escritorio_processos')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Busca dados dos processos e contagem de alertas não lidos
+    const cnjs = escritorio.map(e => e.cnj);
+    const [processosRes, alertasRes] = await Promise.all([
+      supabase.from('processes').select('cnj,tribunal,classe,assunto,status,data_abertura').in('cnj', cnjs),
+      supabase.from('escritorio_alertas').select('cnj').eq('lido', false).in('cnj', cnjs),
+    ]);
+
+    const processosMap = {};
+    (processosRes.data || []).forEach(p => { processosMap[p.cnj] = p; });
+
+    const alertasCount = {};
+    (alertasRes.data || []).forEach(a => {
+      alertasCount[a.cnj] = (alertasCount[a.cnj] || 0) + 1;
+    });
+
+    const result = escritorio.map(e => ({
+      id: e.id,
+      cnj: e.cnj,
+      clienteNome: e.cliente_nome,
+      clientePolo: e.cliente_polo,
+      responsavel: e.responsavel,
+      monitorar: e.monitorar,
+      notas: e.notas,
+      ultimaVerificacao: e.ultima_verificacao,
+      ultimoHashMovimento: e.ultimo_hash_movimento,
+      createdAt: e.created_at,
+      updatedAt: e.updated_at,
+      processo: processosMap[e.cnj] || null,
+      alertasNaoLidos: alertasCount[e.cnj] || 0,
+    }));
+
+    res.json(result);
+  } catch (error) {
+    console.error('Erro GET escritorio/processos:', error);
+    res.status(500).json({ error: 'Erro ao buscar processos do escritório' });
+  }
+});
+
+/**
+ * POST /api/escritorio/processos
+ * Cadastra um processo no escritório e busca dados do MCP
+ * Body: { cnj, clienteNome, clientePolo, responsavel?, monitorar?, notas? }
+ */
+app.post('/api/escritorio/processos', mcpLimiter, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+
+    const { cnj, clienteNome, clientePolo, responsavel, monitorar = true, notas } = req.body;
+
+    if (!cnj || !clienteNome || !clientePolo) {
+      return res.status(400).json({ error: 'cnj, clienteNome e clientePolo são obrigatórios' });
+    }
+
+    const cnjValidado = validateCNJ(cnj);
+    if (!cnjValidado.ok) return res.status(400).json({ error: cnjValidado.error });
+
+    if (!['ATIVO', 'PASSIVO', 'TERCEIRO'].includes(clientePolo)) {
+      return res.status(400).json({ error: 'clientePolo deve ser ATIVO, PASSIVO ou TERCEIRO' });
+    }
+
+    // Inserir no escritório
+    const { data: cadastro, error: insertError } = await supabase
+      .from('escritorio_processos')
+      .insert({
+        cnj: cnjValidado.value,
+        cliente_nome: clienteNome,
+        cliente_polo: clientePolo,
+        responsavel: responsavel || null,
+        monitorar,
+        notas: notas || null,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      if (insertError.code === '23505') {
+        return res.status(409).json({ error: 'Processo já cadastrado no escritório' });
+      }
+      return res.status(500).json({ error: insertError.message });
+    }
+
+    // Busca dados do processo via MCP em background (não bloqueia resposta)
+    callMCPTool('pdpj_visao_geral_processo', { numero_processo: cnjValidado.value })
+      .then(result => {
+        const { text, isError } = parseMCPResponse(result, 'pdpj_visao_geral_processo');
+        if (text && !isError && !isMCPError(text)) {
+          const parsed = parseVisaoGeral(text, cnjValidado.value);
+          supabase.from('processes').upsert({
+            cnj: cnjValidado.value,
+            tribunal: parsed.tribunal,
+            classe: parsed.classe,
+            assunto: parsed.assunto,
+            status: parsed.status,
+            json_resumo: parsed,
+          }, { onConflict: 'cnj' }).then(() => {
+            console.log(`✅ Dados MCP salvos para ${cnjValidado.value}`);
+          });
+        }
+      })
+      .catch(err => console.warn('⚠️ MCP background fetch falhou:', err.message));
+
+    audit(req, 'CADASTRO_ESCRITORIO', 'process', cnjValidado.value);
+
+    res.status(201).json({
+      id: cadastro.id,
+      cnj: cadastro.cnj,
+      clienteNome: cadastro.cliente_nome,
+      clientePolo: cadastro.cliente_polo,
+      responsavel: cadastro.responsavel,
+      monitorar: cadastro.monitorar,
+      notas: cadastro.notas,
+      createdAt: cadastro.created_at,
+    });
+  } catch (error) {
+    console.error('Erro POST escritorio/processos:', error);
+    res.status(500).json({ error: 'Erro ao cadastrar processo' });
+  }
+});
+
+/**
+ * PUT /api/escritorio/processos/:cnj
+ * Atualiza dados do cadastro
+ * Body: { clienteNome?, clientePolo?, responsavel?, monitorar?, notas? }
+ */
+app.put('/api/escritorio/processos/:cnj', async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+
+    const cnj = decodeURIComponent(req.params.cnj);
+    const updates = {};
+    const { clienteNome, clientePolo, responsavel, monitorar, notas } = req.body;
+
+    if (clienteNome !== undefined) updates.cliente_nome = clienteNome;
+    if (clientePolo !== undefined) updates.cliente_polo = clientePolo;
+    if (responsavel !== undefined) updates.responsavel = responsavel;
+    if (monitorar !== undefined) updates.monitorar = monitorar;
+    if (notas !== undefined) updates.notas = notas;
+
+    const { data, error } = await supabase
+      .from('escritorio_processos')
+      .update(updates)
+      .eq('cnj', cnj)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    if (!data) return res.status(404).json({ error: 'Processo não encontrado no escritório' });
+
+    res.json({ success: true, cnj });
+  } catch (error) {
+    console.error('Erro PUT escritorio/processos:', error);
+    res.status(500).json({ error: 'Erro ao atualizar processo' });
+  }
+});
+
+/**
+ * DELETE /api/escritorio/processos/:cnj
+ * Remove processo do cadastro do escritório
+ */
+app.delete('/api/escritorio/processos/:cnj', async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+
+    const cnj = decodeURIComponent(req.params.cnj);
+    const { error } = await supabase
+      .from('escritorio_processos')
+      .delete()
+      .eq('cnj', cnj);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true, cnj });
+  } catch (error) {
+    console.error('Erro DELETE escritorio/processos:', error);
+    res.status(500).json({ error: 'Erro ao remover processo' });
+  }
+});
+
+/**
+ * POST /api/escritorio/monitorar/:cnj
+ * Verifica novos movimentos de um processo específico
+ */
+app.post('/api/escritorio/monitorar/:cnj', mcpLimiter, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+
+    const cnj = decodeURIComponent(req.params.cnj);
+
+    // Busca registro do escritório
+    const { data: registro, error: regError } = await supabase
+      .from('escritorio_processos')
+      .select('*')
+      .eq('cnj', cnj)
+      .single();
+
+    if (regError || !registro) {
+      return res.status(404).json({ error: 'Processo não encontrado no cadastro do escritório' });
+    }
+
+    // Busca movimentos atuais via MCP
+    let movimentos = [];
+    try {
+      const result = await callMCPTool('pdpj_list_movimentos', { numero_processo: cnj, limit: 5 });
+      const { text, isError } = parseMCPResponse(result, 'pdpj_list_movimentos');
+      if (text && !isError) {
+        movimentos = parseMovimentos(text);
+      }
+    } catch (err) {
+      console.warn('⚠️ Erro ao buscar movimentos:', err.message);
+    }
+
+    const alertasCriados = [];
+
+    if (movimentos.length > 0) {
+      const hashMaisRecente = movimentos[0].hash_unico ||
+        `${movimentos[0].data || ''}-${(movimentos[0].descricao || '').slice(0, 50)}`;
+
+      // Compara com o último hash conhecido
+      if (registro.ultimo_hash_movimento !== hashMaisRecente) {
+        // Identifica movimentos novos (todos se nunca monitorado antes)
+        const movimentosNovos = registro.ultimo_hash_movimento
+          ? movimentos.filter(m => {
+              const h = m.hash_unico || `${m.data || ''}-${(m.descricao || '').slice(0, 50)}`;
+              return h !== registro.ultimo_hash_movimento;
+            })
+          : movimentos.slice(0, 1); // Primeira vez: só o mais recente
+
+        for (const mov of movimentosNovos.slice(0, 3)) {
+          const descricao = `Novo movimento em ${mov.data ? new Date(mov.data).toLocaleDateString('pt-BR') : 'data desconhecida'}: ${(mov.descricao || '').slice(0, 200)}`;
+          const { data: alerta } = await supabase
+            .from('escritorio_alertas')
+            .insert({ cnj, tipo: 'NOVO_MOVIMENTO', descricao, lido: false })
+            .select()
+            .single();
+          if (alerta) alertasCriados.push(alerta);
+        }
+
+        // Atualiza último hash e data de verificação
+        await supabase
+          .from('escritorio_processos')
+          .update({
+            ultimo_hash_movimento: hashMaisRecente,
+            ultima_verificacao: new Date().toISOString(),
+          })
+          .eq('cnj', cnj);
+      } else {
+        // Sem novidades — só atualiza data de verificação
+        await supabase
+          .from('escritorio_processos')
+          .update({ ultima_verificacao: new Date().toISOString() })
+          .eq('cnj', cnj);
+      }
+    }
+
+    res.json({
+      cnj,
+      alertasCriados,
+      ultimaVerificacao: new Date().toISOString(),
+      mensagem: alertasCriados.length > 0
+        ? `${alertasCriados.length} novo(s) movimento(s) encontrado(s)`
+        : 'Nenhuma atualização desde a última verificação',
+    });
+  } catch (error) {
+    console.error('Erro POST escritorio/monitorar/:cnj:', error);
+    res.status(500).json({ error: 'Erro ao monitorar processo' });
+  }
+});
+
+/**
+ * POST /api/escritorio/monitorar
+ * Verifica todos os processos monitorados
+ */
+app.post('/api/escritorio/monitorar', async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+
+    const { data: processos, error } = await supabase
+      .from('escritorio_processos')
+      .select('cnj')
+      .eq('monitorar', true);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Dispara monitoramento em background para cada processo
+    res.json({
+      mensagem: `Monitoramento iniciado para ${processos.length} processo(s)`,
+      processos: processos.map(p => p.cnj),
+    });
+
+    // Processa em background (não bloqueia resposta)
+    for (const { cnj } of processos) {
+      try {
+        const result = await callMCPTool('pdpj_list_movimentos', { numero_processo: cnj, limit: 3 });
+        const { text, isError } = parseMCPResponse(result, 'pdpj_list_movimentos');
+        if (!text || isError) continue;
+
+        const movimentos = parseMovimentos(text);
+        if (movimentos.length === 0) continue;
+
+        const { data: reg } = await supabase
+          .from('escritorio_processos').select('ultimo_hash_movimento').eq('cnj', cnj).single();
+
+        if (!reg) continue;
+        const hashNovo = movimentos[0].hash_unico ||
+          `${movimentos[0].data || ''}-${(movimentos[0].descricao || '').slice(0, 50)}`;
+
+        if (reg.ultimo_hash_movimento !== hashNovo) {
+          const descricao = `Novo movimento: ${(movimentos[0].descricao || '').slice(0, 200)}`;
+          await supabase.from('escritorio_alertas').insert({ cnj, tipo: 'NOVO_MOVIMENTO', descricao });
+          await supabase.from('escritorio_processos')
+            .update({ ultimo_hash_movimento: hashNovo, ultima_verificacao: new Date().toISOString() })
+            .eq('cnj', cnj);
+        } else {
+          await supabase.from('escritorio_processos')
+            .update({ ultima_verificacao: new Date().toISOString() }).eq('cnj', cnj);
+        }
+      } catch (err) {
+        console.warn(`⚠️ Erro ao monitorar ${cnj}:`, err.message);
+      }
+    }
+  } catch (error) {
+    console.error('Erro POST escritorio/monitorar:', error);
+    res.status(500).json({ error: 'Erro ao iniciar monitoramento' });
+  }
+});
+
+/**
+ * GET /api/escritorio/alertas
+ * Lista alertas não lidos do escritório
+ */
+app.get('/api/escritorio/alertas', async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+
+    const { data, error } = await supabase
+      .from('escritorio_alertas')
+      .select('*, escritorio_processos(cliente_nome, cliente_polo)')
+      .eq('lido', false)
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json(data || []);
+  } catch (error) {
+    console.error('Erro GET escritorio/alertas:', error);
+    res.status(500).json({ error: 'Erro ao buscar alertas' });
+  }
+});
+
+/**
+ * PUT /api/escritorio/alertas/:id/lido
+ * Marca um alerta como lido
+ */
+app.put('/api/escritorio/alertas/:id/lido', async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+
+    const { error } = await supabase
+      .from('escritorio_alertas')
+      .update({ lido: true })
+      .eq('id', req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro PUT alertas/lido:', error);
+    res.status(500).json({ error: 'Erro ao marcar alerta como lido' });
+  }
+});
+
 // Error handler
 app.use((err, req, res, next) => {
   console.error('Erro não tratado:', err);

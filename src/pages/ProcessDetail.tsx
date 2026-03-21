@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import Card, { CardContent } from '@/components/common/Card'
 import Badge from '@/components/common/Badge'
@@ -14,6 +14,9 @@ import {
   useProcessDocuments,
 } from '@/hooks/useProcess'
 import { formatDateBR, formatCurrencyBR, formatCPFCNPJ } from '@/utils/format'
+import { CadastroProcessoModal } from '@/components/process/CadastroProcessoModal'
+import { verificarCadastro, monitorarProcesso } from '@/services/escritorio.service'
+import type { EscritorioProcesso } from '@/types/escritorio'
 
 function getStatusColor(status: string): 'success' | 'default' | 'warning' | 'info' {
   if (status.toLowerCase().includes('tramitação')) return 'success'
@@ -26,6 +29,34 @@ const ProcessDetail: React.FC = () => {
   const { cnj } = useParams<{ cnj: string }>()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('overview')
+  const [cadastro, setCadastro] = useState<EscritorioProcesso | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [monitorando, setMonitorando] = useState(false)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (cnj) {
+      verificarCadastro(cnj).then(setCadastro).catch(() => {})
+    }
+  }, [cnj])
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg)
+    setTimeout(() => setToastMsg(null), 4000)
+  }
+
+  const handleMonitorar = async () => {
+    if (!cnj) return
+    setMonitorando(true)
+    try {
+      const resultado = await monitorarProcesso(cnj)
+      showToast(resultado.mensagem)
+    } catch {
+      showToast('Erro ao verificar atualizações.')
+    } finally {
+      setMonitorando(false)
+    }
+  }
 
   const processQuery = useProcess(cnj)
   const partiesQuery = useProcessParties(cnj)
@@ -65,6 +96,13 @@ const ProcessDetail: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Toast */}
+      {toastMsg && (
+        <div className="fixed top-4 right-4 z-50 bg-gray-900 text-white px-4 py-3 rounded-lg shadow-lg text-sm max-w-sm">
+          {toastMsg}
+        </div>
+      )}
+
       {/* Header Section */}
       <Card className="border-l-4 border-l-blue-600 shadow-lg">
         <CardContent className="py-8">
@@ -76,10 +114,28 @@ const ProcessDetail: React.FC = () => {
               <p className="text-gray-600 text-lg">
                 {process.tribunal} • {process.classe}
               </p>
+              {/* Badge escritório */}
+              {cadastro && (
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <span className="text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded px-2 py-1">
+                    📁 {cadastro.clienteNome} — {cadastro.clientePolo === 'ATIVO' ? 'Ativo' : cadastro.clientePolo === 'PASSIVO' ? 'Passivo' : 'Terceiro'}
+                  </span>
+                  <Button variant="secondary" size="sm" onClick={handleMonitorar} disabled={monitorando}>
+                    {monitorando ? 'Verificando...' : '🔄 Verificar atualizações'}
+                  </Button>
+                </div>
+              )}
             </div>
-            <Badge variant={getStatusColor(process.status)}>
-              {process.status}
-            </Badge>
+            <div className="flex flex-col items-end gap-2">
+              <Badge variant={getStatusColor(process.status)}>
+                {process.status}
+              </Badge>
+              {!cadastro && (
+                <Button variant="secondary" size="sm" onClick={() => setModalOpen(true)}>
+                  + Cadastrar no escritório
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6 pt-6 border-t border-gray-200">
@@ -295,6 +351,18 @@ const ProcessDetail: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Modal de cadastro no escritório */}
+      <CadastroProcessoModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSuccess={() => {
+          setModalOpen(false)
+          if (cnj) verificarCadastro(cnj).then(setCadastro).catch(() => {})
+          showToast('Processo cadastrado no escritório!')
+        }}
+        cnjInicial={cnj}
+      />
     </div>
   )
 }
