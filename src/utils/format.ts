@@ -19,7 +19,7 @@ export function formatDateBR(date: string | Date | null | undefined): string {
  */
 export function formatCurrencyBR(value: number | null | undefined): string {
   if (value == null) return '—'
-  return `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+  return `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 /**

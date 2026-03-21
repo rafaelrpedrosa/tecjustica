@@ -17,14 +17,36 @@ import { formatDateBR, formatCurrencyBR, formatCPFCNPJ } from '@/utils/format'
 import { CadastroProcessoModal } from '@/components/process/CadastroProcessoModal'
 import { verificarCadastro, monitorarProcesso } from '@/services/escritorio.service'
 import type { EscritorioProcesso } from '@/types/escritorio'
+import { useGargaloProcessual } from '@/hooks/useGargaloProcessual'
+import { criarDiligenciaDeGargalo } from '@/utils/criarDiligenciaDeGargalo'
+import {
+  listarDiligenciasPorCNJ,
+  salvarDiligencia,
+} from '@/services/diligencia.service'
+import { RetornoModal } from '@/components/process/RetornoModal'
+import type { DiligenciaOperacional, StatusDiligencia } from '@/types/diligencia'
 
-// Constante fora do componente — evita recriar array a cada render
-const TABS_ITEMS = [
+// Constante fora do componente — abas base sem badge dinâmico
+const BASE_TABS = [
   { label: 'Visão Geral', value: 'overview' },
   { label: 'Partes', value: 'parties' },
   { label: 'Movimentos', value: 'movements' },
   { label: 'Documentos', value: 'documents' },
 ]
+
+const STATUS_LABEL: Record<StatusDiligencia, string> = {
+  PENDENTE: 'Pendente',
+  EM_ANDAMENTO: 'Em andamento',
+  CONCLUIDA: 'Concluída',
+  SEM_RETORNO: 'Sem retorno',
+}
+
+const ACAO_LABEL: Record<string, string> = {
+  LIGACAO_SECRETARIA: '📞 Lig. Secretaria',
+  LIGACAO_GABINETE: '📞 Lig. Gabinete',
+  EMAIL_VARA: '📧 Email Vara',
+  RECHECK: '🔄 Recheck',
+}
 
 function getStatusColor(status: string): 'success' | 'default' | 'warning' | 'info' {
   if (status.toLowerCase().includes('tramitação')) return 'success'
@@ -78,6 +100,49 @@ const ProcessDetail: React.FC = () => {
   const partiesQuery = useProcessParties(cnj)
   const movementsQuery = useProcessMovements(cnj)
   const documentsQuery = useProcessDocuments(cnj)
+  const { gargalo } = useGargaloProcessual(cnj)
+  const [diligencias, setDiligencias] = useState<DiligenciaOperacional[]>(() =>
+    cnj ? listarDiligenciasPorCNJ(cnj) : []
+  )
+  const [retornoModal, setRetornoModal] = useState<DiligenciaOperacional | null>(null)
+
+  const recarregarDiligencias = useCallback(() => {
+    if (cnj) setDiligencias(listarDiligenciasPorCNJ(cnj))
+  }, [cnj])
+
+  const gerarDiligencia = useCallback(() => {
+    if (!cnj || !gargalo) return
+    const jaExiste = diligencias.some(
+      d => d.tipoGargalo === gargalo.tipo && d.status !== 'CONCLUIDA'
+    )
+    if (jaExiste) {
+      showToast('Já existe uma diligência aberta para este gargalo.')
+      return
+    }
+    const nova = criarDiligenciaDeGargalo(cnj, cadastro?.clienteNome, gargalo)
+    salvarDiligencia(nova)
+    recarregarDiligencias()
+    showToast('Diligência criada com sucesso.')
+  }, [cnj, gargalo, diligencias, cadastro, showToast, recarregarDiligencias])
+
+  const diligenciasAbertas = diligencias.filter(d => d.status !== 'CONCLUIDA')
+
+  const TABS_ITEMS = useMemo(() => [
+    ...BASE_TABS,
+    {
+      label: (
+        <span className="flex items-center gap-1.5">
+          Diligências
+          {diligenciasAbertas.length > 0 && (
+            <span className="inline-flex items-center justify-center w-4 h-4 text-xs font-bold text-white bg-red-500 rounded-full">
+              {diligenciasAbertas.length > 9 ? '9+' : diligenciasAbertas.length}
+            </span>
+          )}
+        </span>
+      ),
+      value: 'diligencias',
+    },
+  ], [diligenciasAbertas.length])
 
   const loading =
     processQuery.isLoading ||
@@ -149,6 +214,11 @@ const ProcessDetail: React.FC = () => {
                   <Button variant="secondary" size="sm" onClick={handleMonitorar} disabled={monitorando}>
                     {monitorando ? 'Verificando...' : '🔄 Verificar atualizações'}
                   </Button>
+                  {gargalo && (
+                    <Button variant="secondary" size="sm" onClick={gerarDiligencia}>
+                      📋 Gerar Diligência
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -237,6 +307,57 @@ const ProcessDetail: React.FC = () => {
                   </p>
                 </div>
               </div>
+
+              {/* Card de Diagnóstico Operacional */}
+              {gargalo ? (
+                <div className={`p-4 rounded-lg border-l-4 ${
+                  gargalo.prioridade === 'URGENTE' ? 'bg-red-50 border-l-red-500' :
+                  gargalo.prioridade === 'ALTA'    ? 'bg-yellow-50 border-l-yellow-500' :
+                  gargalo.prioridade === 'NORMAL'  ? 'bg-blue-50 border-l-blue-400' :
+                                                     'bg-gray-50 border-l-gray-300'
+                }`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 flex-1">
+                      <span className="text-xl mt-0.5">
+                        {gargalo.prioridade === 'URGENTE' ? '🚨' :
+                         gargalo.prioridade === 'ALTA'    ? '⚠️' :
+                         gargalo.prioridade === 'NORMAL'  ? '🕐' : 'ℹ️'}
+                      </span>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded uppercase tracking-wide ${
+                            gargalo.prioridade === 'URGENTE' ? 'bg-red-200 text-red-800' :
+                            gargalo.prioridade === 'ALTA'    ? 'bg-yellow-200 text-yellow-800' :
+                            gargalo.prioridade === 'NORMAL'  ? 'bg-blue-200 text-blue-800' :
+                                                               'bg-gray-200 text-gray-700'
+                          }`}>
+                            {gargalo.prioridade}
+                          </span>
+                          <span className="text-xs text-gray-500 font-mono">{gargalo.tipo}</span>
+                        </div>
+                        <p className="font-semibold text-gray-900 text-sm">{gargalo.descricao}</p>
+                        {gargalo.marcoRelevante && (
+                          <p className="text-xs text-gray-500 italic">
+                            Marco: {gargalo.marcoRelevante}
+                            {gargalo.dataMarco ? ` · ${formatDateBR(gargalo.dataMarco)}` : ''}
+                          </p>
+                        )}
+                        <p className="text-gray-600 text-xs mt-1">💡 {gargalo.acaoRecomendada}</p>
+                      </div>
+                    </div>
+                    <span className="text-2xl font-bold text-gray-400 tabular-nums whitespace-nowrap">
+                      {gargalo.diasParado}d
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                !loading && (
+                  <div className="p-3 rounded-lg bg-green-50 border border-green-200 flex items-center gap-2">
+                    <span>✅</span>
+                    <span className="text-sm text-green-700">Nenhum gargalo evidente encontrado</span>
+                  </div>
+                )
+              )}
 
               {process.descricao && (
                 <div className="p-6 bg-gray-50 rounded-lg">
@@ -370,8 +491,91 @@ const ProcessDetail: React.FC = () => {
               )}
             </>
           )}
+
+          {/* Diligências */}
+          {activeTab === 'diligencias' && (
+            <div className="space-y-4">
+              {diligencias.length === 0 ? (
+                <div className="text-center py-8">
+                  {gargalo ? (
+                    <div className="space-y-3">
+                      <p className="text-gray-500 text-sm">Nenhuma diligência registrada para este processo.</p>
+                      <button
+                        onClick={gerarDiligencia}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+                      >
+                        📋 Gerar diligência agora
+                      </button>
+                    </div>
+                  ) : (
+                    <Empty title="Nenhuma diligência" description="Nenhum gargalo detectado neste processo." />
+                  )}
+                </div>
+              ) : (
+                diligencias.map((d) => (
+                  <div
+                    key={d.id}
+                    className={`p-4 rounded-lg border ${
+                      d.status === 'CONCLUIDA' ? 'bg-gray-50 border-gray-200 opacity-70' :
+                      d.prioridade === 'URGENTE' ? 'bg-red-50 border-red-200' :
+                      d.prioridade === 'ALTA' ? 'bg-yellow-50 border-yellow-200' :
+                      'bg-white border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                            {ACAO_LABEL[d.acaoRecomendada] ?? d.acaoRecomendada}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                            d.prioridade === 'URGENTE' ? 'bg-red-100 text-red-700' :
+                            d.prioridade === 'ALTA' ? 'bg-yellow-100 text-yellow-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {d.prioridade}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded ${
+                            d.status === 'CONCLUIDA' ? 'bg-green-100 text-green-700' :
+                            d.status === 'EM_ANDAMENTO' ? 'bg-blue-100 text-blue-700' :
+                            'bg-amber-100 text-amber-700'
+                          }`}>
+                            {STATUS_LABEL[d.status]}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700">{d.descricao}</p>
+                        <p className="text-xs text-gray-500">{d.diasParado} dias parado</p>
+                        {d.retorno && (
+                          <p className="text-xs text-gray-600 italic mt-1">"{d.retorno}"</p>
+                        )}
+                        {d.proximaAcao && (
+                          <p className="text-xs text-blue-600 mt-1">→ {d.proximaAcao}{d.proximaData ? ` · ${d.proximaData}` : ''}</p>
+                        )}
+                      </div>
+                      {d.status !== 'CONCLUIDA' && (
+                        <button
+                          onClick={() => setRetornoModal(d)}
+                          className="text-xs px-3 py-1.5 bg-white border border-gray-300 rounded hover:bg-gray-50 whitespace-nowrap"
+                        >
+                          📝 Retorno
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {retornoModal && (
+        <RetornoModal
+          diligencia={retornoModal}
+          onClose={() => setRetornoModal(null)}
+          onSaved={recarregarDiligencias}
+        />
+      )}
 
       {/* Modal de cadastro no escritório */}
       <CadastroProcessoModal

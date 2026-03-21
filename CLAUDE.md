@@ -132,6 +132,8 @@ TECJUSTICA_AUTH_TOKEN=<bearer token>          # backend exits if missing
 | `/precedents` | `PrecedentsPage.tsx` |
 | `/search-cpf` | `SearchCPF.tsx` |
 | `/meus-processos` | `MeusProcessos.tsx` |
+| `/diligencias` | `FilaDiligencias.tsx` — fila operacional, filtros, ações por linha |
+| `/dashboard-operacional` | `DashboardOperacional.tsx` — 6 cards métricas + top-5 urgentes |
 
 `DocumentViewer` requires `cnj` passed via React Router `state` (set in `ProcessDetail` when clicking "Ler"). Without it, the viewer shows an error state.
 
@@ -173,6 +175,47 @@ Para modais com muitos campos que podem transbordar a tela: adicionar `max-h-[90
 ### Escritório Alertas — Marcar Todos como Lidos
 `PUT /api/escritorio/alertas/lidos/cnj/:cnj` marca todos os alertas não lidos de um CNJ como lidos. Usar antes de navegar para o detalhe do processo a partir de MeusProcessos (atualização otimista no estado local + chamada API).
 
+### Motor de Gargalos
+
+`src/utils/analisarGargalo.ts` — função principal com 7 regras heurísticas por texto de movimentação.
+Helpers puros em `src/utils/processRules.ts`: `norm`, `findFirst`, `houveImpulsoApos`, `diasDesde`.
+Cenários de teste em `src/utils/gargaloMocks.ts` (usar no console: `import { mockConcluso } from '@/utils/gargaloMocks'`).
+
+**Convenção de array**: `movements[0]` = mais recente. `findFirst` retorna o índice mais baixo (match mais recente).
+`houveImpulsoApos(movements, idx, patterns)` verifica índices `0..idx-1` (anteriores no tempo = mais recentes que o marco).
+
+**Tipos**: `PrioridadeGargalo` é `'URGENTE' | 'ALTA' | 'NORMAL' | 'MONITORAR'` (não mais `alta/media/baixa`).
+
+### Diligências
+
+`src/services/diligencia.service.ts` — CRUD via localStorage, chave `'rpatec_diligencias'`. TODO: migrar para API.
+Páginas: `src/pages/FilaDiligencias.tsx`, `src/pages/DashboardOperacional.tsx`.
+Modal: `src/components/process/RetornoModal.tsx`.
+
+### ProcessDetail — Abas Dinâmicas
+
+`BASE_TABS` (constante fora do componente) define as 4 abas estáticas. A 5ª aba "Diligências" é adicionada via `useMemo` com badge de contagem.
+`Tabs.tsx` aceita `label: React.ReactNode` (não apenas `string`) — necessário para badges nos labels.
+`loading` (estado combinado) controla o estado de carregamento — não usar `isLoading` de hooks individuais.
+
+### ProcessMovement.data — Tipo `string | Date`
+
+`ProcessMovement.data` é `string | Date`. Antes de passar para funções que esperam `string`, usar:
+```ts
+function toStr(d: string | Date): string { return typeof d === 'string' ? d : d.toISOString() }
+```
+
+### Backend — Nunca Expor error.message ao Cliente
+
+Padrão obrigatório para erros Supabase/internos no backend:
+```js
+if (error) {
+  console.error('Contexto da rota:', error.message)
+  return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+}
+```
+Nunca retornar `error.message` diretamente na resposta — expõe detalhes internos.
+
 ---
 
-**Last Updated**: 2026-03-21 (sessão: alertas escritório, seleção de partes no modal)
+**Last Updated**: 2026-03-21 (sessão: motor gargalos nível 3, diligências, dashboard, correções segurança)

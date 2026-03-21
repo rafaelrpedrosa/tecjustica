@@ -7,6 +7,8 @@ import DocumentViewer from '@/pages/DocumentViewer'
 import PrecedentsPage from '@/pages/PrecedentsPage'
 import SearchCPF from '@/pages/SearchCPF'
 import MeusProcessos from '@/pages/MeusProcessos'
+import FilaDiligencias from '@/pages/FilaDiligencias'
+import DashboardOperacional from '@/pages/DashboardOperacional'
 import NotFound from '@/pages/NotFound'
 
 const queryClient = new QueryClient({
@@ -31,6 +33,8 @@ function App() {
             <Route path="/precedents" element={<PrecedentsPage />} />
             <Route path="/search-cpf" element={<SearchCPF />} />
             <Route path="/meus-processos" element={<MeusProcessos />} />
+            <Route path="/diligencias" element={<FilaDiligencias />} />
+            <Route path="/dashboard-operacional" element={<DashboardOperacional />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

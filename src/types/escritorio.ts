@@ -6,6 +6,7 @@ export interface EscritorioProcesso {
   clienteNome: string
   clientePolo: 'ATIVO' | 'PASSIVO' | 'TERCEIRO'
   responsavel?: string
+  vara?: string
   monitorar: boolean
   notas?: string
   ultimaVerificacao?: string
@@ -31,6 +32,7 @@ export interface CadastroProcessoInput {
   clienteNome: string
   clientePolo: 'ATIVO' | 'PASSIVO' | 'TERCEIRO'
   responsavel?: string
+  vara?: string
   monitorar?: boolean
   notas?: string
 }

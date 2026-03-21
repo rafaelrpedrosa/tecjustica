@@ -48,6 +48,8 @@ const Navigation: React.FC = () => {
               )}
             </>
           )}
+          {navLink('/diligencias', 'Diligências')}
+          {navLink('/dashboard-operacional', '📊 Dashboard')}
           {navLink('/search-cpf', 'Buscar por CPF/CNPJ')}
           {navLink('/precedents', 'Precedentes')}
         </div>

@@ -12,6 +12,7 @@ export interface Process {
   valor?: number
   dataAbertura?: Date | string
   juiz?: string
+  vara?: string
   descricao?: string
   resumo?: string
   jsonResumo?: Record<string, any>

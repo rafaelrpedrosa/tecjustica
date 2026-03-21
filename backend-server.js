@@ -94,7 +94,7 @@ if (API_SECRET) {
     next();
   });
 } else {
-  console.warn('⚠️  API_SECRET não definido — backend aceita qualquer origem (defina em produção)');
+  console.warn('⚠️  API_SECRET não definido. Em produção, defina API_SECRET=<chave> para proteger o backend.');
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1136,7 +1136,10 @@ app.get('/api/escritorio/processos', async (req, res) => {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      console.error('Erro GET escritorio/processos (Supabase):', error.message);
+      return res.status(500).json({ error: 'Erro interno ao processar operação.' });
+    }
 
     // Busca dados dos processos e contagem de alertas não lidos
     const cnjs = escritorio.map(e => e.cnj);
@@ -1445,7 +1448,10 @@ app.post('/api/escritorio/monitorar', async (req, res) => {
       .select('cnj')
       .eq('monitorar', true);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      console.error('Erro POST escritorio/monitorar (Supabase):', error.message);
+      return res.status(500).json({ error: 'Erro interno ao processar operação.' });
+    }
 
     // Dispara monitoramento em background para cada processo
     res.json({

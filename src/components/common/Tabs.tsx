@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 
 interface TabItem {
-  label: string
+  label: React.ReactNode
   value: string
   content?: React.ReactNode
 }

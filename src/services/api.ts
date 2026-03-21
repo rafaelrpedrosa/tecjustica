@@ -17,15 +17,6 @@ const client: AxiosInstance = axios.create({
   },
 })
 
-// Interceptor para adicionar token se necessário
-client.interceptors.request.use((config) => {
-  const token = localStorage.getItem('api_token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
-
 // Interceptor para tratamento de erros
 client.interceptors.response.use(
   (response) => response,
@@ -37,8 +28,3 @@ client.interceptors.response.use(
 
 export const apiClient = client
 export const useMockData = USE_MOCK
-
-export const setApiToken = (token: string) => {
-  localStorage.setItem('api_token', token)
-  client.defaults.headers.common.Authorization = `Bearer ${token}`
-}

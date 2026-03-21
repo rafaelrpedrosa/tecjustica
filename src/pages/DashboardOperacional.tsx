@@ -1,0 +1,164 @@
+import React, { useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import Card, { CardContent } from '@/components/common/Card'
+import Button from '@/components/common/Button'
+import { listarDiligencias } from '@/services/diligencia.service'
+import type { DiligenciaOperacional, PrioridadeDiligencia } from '@/types/diligencia'
+
+const PRIORIDADE_ORDER: Record<PrioridadeDiligencia, number> = {
+  URGENTE: 0, ALTA: 1, NORMAL: 2, MONITORAR: 3,
+}
+
+function calcularMetricas(lista: DiligenciaOperacional[]) {
+  const hoje = new Date().toISOString().slice(0, 10)
+  const urgentes = lista.filter(d => d.prioridade === 'URGENTE' && d.status !== 'CONCLUIDA').length
+  const pendentes = lista.filter(d => d.status === 'PENDENTE').length
+  const emAndamento = lista.filter(d => d.status === 'EM_ANDAMENTO').length
+  const concluidas = lista.filter(d => d.status === 'CONCLUIDA').length
+  const ativos = lista.filter(d => d.status !== 'CONCLUIDA')
+  const mediaDias = ativos.length
+    ? Math.round(ativos.reduce((acc, d) => acc + d.diasParado, 0) / ativos.length)
+    : 0
+  const acaoHoje = lista.filter(d => d.proximaData === hoje && d.status !== 'CONCLUIDA').length
+  return { urgentes, pendentes, emAndamento, concluidas, mediaDias, acaoHoje }
+}
+
+const DashboardOperacional: React.FC = () => {
+  const navigate = useNavigate()
+  const [lista, setLista] = useState<DiligenciaOperacional[]>(() => listarDiligencias())
+
+  const recarregar = useCallback(() => setLista(listarDiligencias()), [])
+
+  const m = calcularMetricas(lista)
+
+  const top5 = [...lista]
+    .filter(d => d.status !== 'CONCLUIDA')
+    .sort((a, b) => {
+      const pa = PRIORIDADE_ORDER[a.prioridade]
+      const pb = PRIORIDADE_ORDER[b.prioridade]
+      if (pa !== pb) return pa - pb
+      return b.diasParado - a.diasParado
+    })
+    .slice(0, 5)
+
+  const PRIORIDADE_ICON: Record<string, string> = {
+    URGENTE: '🔴',
+    ALTA: '🟡',
+    NORMAL: '⚪',
+    MONITORAR: '🔵',
+  }
+
+  const ACAO_LABEL: Record<string, string> = {
+    LIGACAO_SECRETARIA: '📞 Secretaria',
+    LIGACAO_GABINETE: '📞 Gabinete',
+    EMAIL_VARA: '📧 Email',
+    RECHECK: '🔄 Recheck',
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard Operacional</h1>
+          <p className="text-gray-500 text-sm mt-1">Visão geral das diligências do escritório</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="secondary" size="sm" onClick={recarregar}>↺ Atualizar</Button>
+          <Button variant="primary" size="sm" onClick={() => navigate('/diligencias')}>
+            Ver Fila Completa
+          </Button>
+        </div>
+      </div>
+
+      {/* Grid de métricas */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="py-5 text-center">
+            <p className="text-4xl font-bold text-red-600">{m.urgentes}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Urgentes</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-5 text-center">
+            <p className="text-4xl font-bold text-yellow-600">{m.pendentes}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Pendentes</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-5 text-center">
+            <p className="text-4xl font-bold text-blue-600">{m.emAndamento}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Em andamento</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-5 text-center">
+            <p className="text-4xl font-bold text-green-600">{m.concluidas}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Concluídas</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-5 text-center">
+            <p className="text-4xl font-bold text-gray-700">{m.mediaDias}d</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Média dias parado</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-5 text-center">
+            <p className="text-4xl font-bold text-purple-600">{m.acaoHoje}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Ação hoje</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Top 5 urgentes */}
+      <Card>
+        <CardContent>
+          <h2 className="font-semibold text-gray-900 mb-4">🔥 Top 5 Mais Urgentes</h2>
+          {top5.length === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-6">
+              Nenhuma diligência ativa. Ótimo trabalho!
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {top5.map((d) => (
+                <div
+                  key={d.id}
+                  className={`flex items-center justify-between p-3 rounded-lg border-l-4 cursor-pointer hover:opacity-90 ${
+                    d.prioridade === 'URGENTE'
+                      ? 'bg-red-50 border-l-red-500'
+                      : d.prioridade === 'ALTA'
+                      ? 'bg-yellow-50 border-l-yellow-400'
+                      : 'bg-gray-50 border-l-gray-300'
+                  }`}
+                  onClick={() => navigate(`/process/${d.cnj}`)}
+                >
+                  <div className="flex items-center gap-3">
+                    <span>{PRIORIDADE_ICON[d.prioridade]}</span>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {d.clienteNome ?? d.cnj}
+                      </p>
+                      <p className="text-xs text-gray-500">{ACAO_LABEL[d.acaoRecomendada]}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-lg font-bold ${
+                      d.prioridade === 'URGENTE' ? 'text-red-600' : 'text-yellow-600'
+                    }`}>
+                      {d.diasParado}d
+                    </p>
+                    {d.retorno && (
+                      <p className="text-xs text-gray-400 italic max-w-40 truncate">{d.retorno}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+export default DashboardOperacional
