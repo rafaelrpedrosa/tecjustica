@@ -69,6 +69,7 @@ const FilaDiligencias: React.FC = () => {
   const [filtroPrioridade, setFiltroPrioridade] = useState<PrioridadeDiligencia | ''>('')
   const [filtroStatus, setFiltroStatus] = useState<StatusDiligencia | ''>('')
   const [modalDiligencia, setModalDiligencia] = useState<DiligenciaOperacional | null>(null)
+  const [confirmarConclusao, setConfirmarConclusao] = useState<DiligenciaOperacional | null>(null)
 
   const recarregar = useCallback(() => {
     setLista(ordenar(listarDiligencias()))
@@ -253,7 +254,8 @@ const FilaDiligencias: React.FC = () => {
                               📝 Retorno
                             </button>
                             <button
-                              onClick={() => concluir(d)}
+                              type="button"
+                              onClick={() => setConfirmarConclusao(d)}
                               className="px-2 py-1 bg-white border border-gray-300 rounded text-xs hover:bg-gray-50"
                             >
                               ✓ Concluir
@@ -271,6 +273,37 @@ const FilaDiligencias: React.FC = () => {
             </table>
           </div>
         </Card>
+      )}
+
+      {confirmarConclusao && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirmar conclusão</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              Marcar a diligência de{' '}
+              <span className="font-medium">
+                {confirmarConclusao.clienteNome ?? confirmarConclusao.cnj}
+              </span>{' '}
+              como concluída?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setConfirmarConclusao(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => { concluir(confirmarConclusao); setConfirmarConclusao(null) }}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {modalDiligencia && (
