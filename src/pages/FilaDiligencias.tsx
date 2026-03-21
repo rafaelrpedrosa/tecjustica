@@ -96,11 +96,11 @@ const FilaDiligencias: React.FC = () => {
 
   const filtrosAtivos = !!(busca || filtroPrioridade || filtroStatus)
 
-  function limparFiltros() {
+  const limparFiltros = useCallback(() => {
     setBusca('')
     setFiltroPrioridade('')
     setFiltroStatus('')
-  }
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -152,7 +152,9 @@ const FilaDiligencias: React.FC = () => {
             </select>
             {filtrosAtivos && (
               <button
+                type="button"
                 onClick={limparFiltros}
+                aria-label="Limpar filtros"
                 className="px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
               >
                 ✕ Limpar filtros
