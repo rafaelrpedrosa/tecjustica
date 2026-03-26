@@ -53,6 +53,10 @@ const ACAO_LABEL: Record<string, string> = {
   RECHECK: '🔄 Revisar',
 }
 
+const hoje = new Date().toISOString().slice(0, 10) // 'YYYY-MM-DD'
+const vencida = (d: DiligenciaOperacional): boolean =>
+  !!d.proximaData && d.proximaData < hoje && d.status !== 'CONCLUIDA'
+
 function ordenar(lista: DiligenciaOperacional[]): DiligenciaOperacional[] {
   return [...lista].sort((a, b) => {
     const pa = PRIORIDADE_ORDER[a.prioridade]
@@ -169,13 +173,14 @@ const FilaDiligencias: React.FC = () => {
                   <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Prioridade</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Ação</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prazo</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Retorno</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtrada.map((d) => (
-                  <tr key={d.id} className={`${ROW_STYLE[d.prioridade]} hover:brightness-95 transition-all`}>
+                  <tr key={d.id} className={`${ROW_STYLE[d.prioridade]} ${vencida(d) ? 'ring-1 ring-inset ring-red-400' : ''} hover:brightness-95 transition-all`}>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => navigate(`/process/${d.cnj}`)}
@@ -210,6 +215,16 @@ const FilaDiligencias: React.FC = () => {
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_STYLE[d.status]}`}>
                         {STATUS_LABEL[d.status]}
                       </span>
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-xs">
+                      {d.proximaData ? (
+                        <span className={vencida(d) ? 'text-red-600 font-semibold flex items-center gap-1' : 'text-gray-600'}>
+                          {vencida(d) && <span>⚠️</span>}
+                          {d.proximaData}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-500 italic max-w-40 truncate">
                       {d.retorno ?? '—'}
