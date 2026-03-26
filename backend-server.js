@@ -1564,6 +1564,158 @@ app.put('/api/escritorio/alertas/lidos/cnj/:cnj', async (req, res) => {
   }
 });
 
+// ─── Diligências ──────────────────────────────────────────────────────────────
+
+function diligenciaToCamel(d) {
+  return {
+    id:              d.id,
+    cnj:             d.cnj,
+    clienteNome:     d.cliente_nome ?? undefined,
+    tipoGargalo:     d.tipo_gargalo,
+    descricao:       d.descricao,
+    prioridade:      d.prioridade,
+    diasParado:      d.dias_parado,
+    acaoRecomendada: d.acao_recomendada,
+    status:          d.status,
+    responsavel:     d.responsavel ?? undefined,
+    dataCriacao:     d.data_criacao,
+    dataPrevista:    d.data_prevista ?? undefined,
+    dataExecucao:    d.data_execucao ?? undefined,
+    retorno:         d.retorno ?? undefined,
+    proximaAcao:     d.proxima_acao ?? undefined,
+    proximaData:     d.proxima_data ?? undefined,
+  };
+}
+
+function diligenciaToSnake(d) {
+  return {
+    id:               d.id,
+    cnj:              d.cnj,
+    cliente_nome:     d.clienteNome ?? null,
+    tipo_gargalo:     d.tipoGargalo,
+    descricao:        d.descricao,
+    prioridade:       d.prioridade,
+    dias_parado:      d.diasParado,
+    acao_recomendada: d.acaoRecomendada,
+    status:           d.status,
+    responsavel:      d.responsavel ?? null,
+    data_criacao:     d.dataCriacao,
+    data_prevista:    d.dataPrevista ?? null,
+    data_execucao:    d.dataExecucao ?? null,
+    retorno:          d.retorno ?? null,
+    proxima_acao:     d.proximaAcao ?? null,
+    proxima_data:     d.proximaData ?? null,
+  };
+}
+
+// GET /api/diligencias
+app.get('/api/diligencias', async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+  try {
+    const { data, error } = await supabase
+      .from('diligencias')
+      .select('*')
+      .order('data_criacao', { ascending: false });
+    if (error) {
+      console.error('Erro GET /api/diligencias:', error.message);
+      return res.status(500).json({ error: 'Erro interno ao listar diligências.' });
+    }
+    res.json(data.map(diligenciaToCamel));
+  } catch (err) {
+    console.error('Erro GET /api/diligencias:', err.message);
+    res.status(500).json({ error: 'Erro interno ao listar diligências.' });
+  }
+});
+
+// GET /api/diligencias/cnj/:cnj
+app.get('/api/diligencias/cnj/:cnj', async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+  const cnj = decodeURIComponent(req.params.cnj);
+  try {
+    const { data, error } = await supabase
+      .from('diligencias')
+      .select('*')
+      .eq('cnj', cnj)
+      .order('data_criacao', { ascending: false });
+    if (error) {
+      console.error('Erro GET /api/diligencias/cnj:', error.message);
+      return res.status(500).json({ error: 'Erro interno ao listar diligências por CNJ.' });
+    }
+    res.json(data.map(diligenciaToCamel));
+  } catch (err) {
+    console.error('Erro GET /api/diligencias/cnj:', err.message);
+    res.status(500).json({ error: 'Erro interno ao listar diligências por CNJ.' });
+  }
+});
+
+// POST /api/diligencias — cria uma ou várias (array aceito para migração em lote)
+app.post('/api/diligencias', async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+  const input = req.body;
+  const items = Array.isArray(input) ? input : [input];
+  const rows = items.map(diligenciaToSnake);
+  try {
+    const { data, error } = await supabase
+      .from('diligencias')
+      .upsert(rows, { onConflict: 'id' })
+      .select();
+    if (error) {
+      console.error('Erro POST /api/diligencias:', error.message);
+      return res.status(500).json({ error: 'Erro interno ao criar diligência.' });
+    }
+    const result = data.map(diligenciaToCamel);
+    res.status(201).json(Array.isArray(input) ? result : result[0]);
+  } catch (err) {
+    console.error('Erro POST /api/diligencias:', err.message);
+    res.status(500).json({ error: 'Erro interno ao criar diligência.' });
+  }
+});
+
+// PUT /api/diligencias/:id
+app.put('/api/diligencias/:id', async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+  const { id } = req.params;
+  const updates = diligenciaToSnake({ id, ...req.body });
+  // Remove null fields to avoid overwriting optional fields with null
+  Object.keys(updates).forEach(k => updates[k] === null && delete updates[k]);
+  try {
+    const { data, error } = await supabase
+      .from('diligencias')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) {
+      console.error('Erro PUT /api/diligencias:', error.message);
+      return res.status(500).json({ error: 'Erro interno ao atualizar diligência.' });
+    }
+    res.json(diligenciaToCamel(data));
+  } catch (err) {
+    console.error('Erro PUT /api/diligencias:', err.message);
+    res.status(500).json({ error: 'Erro interno ao atualizar diligência.' });
+  }
+});
+
+// DELETE /api/diligencias/:id
+app.delete('/api/diligencias/:id', async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+  const { id } = req.params;
+  try {
+    const { error } = await supabase
+      .from('diligencias')
+      .delete()
+      .eq('id', id);
+    if (error) {
+      console.error('Erro DELETE /api/diligencias:', error.message);
+      return res.status(500).json({ error: 'Erro interno ao excluir diligência.' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Erro DELETE /api/diligencias:', err.message);
+    res.status(500).json({ error: 'Erro interno ao excluir diligência.' });
+  }
+});
+
 // Error handler
 app.use((err, req, res, next) => {
   console.error('Erro não tratado:', err);
