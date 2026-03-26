@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Card, { CardContent } from '@/components/common/Card'
 import Button from '@/components/common/Button'
@@ -50,7 +50,7 @@ const ACAO_LABEL: Record<string, string> = {
   LIGACAO_SECRETARIA: '📞 Lig. Secretaria',
   LIGACAO_GABINETE: '📞 Lig. Gabinete',
   EMAIL_VARA: '📧 Email Vara',
-  RECHECK: '🔄 Recheck',
+  RECHECK: '🔄 Revisar',
 }
 
 function ordenar(lista: DiligenciaOperacional[]): DiligenciaOperacional[] {
@@ -64,25 +64,30 @@ function ordenar(lista: DiligenciaOperacional[]): DiligenciaOperacional[] {
 
 const FilaDiligencias: React.FC = () => {
   const navigate = useNavigate()
-  const [lista, setLista] = useState<DiligenciaOperacional[]>(() => ordenar(listarDiligencias()))
+  const [lista, setLista] = useState<DiligenciaOperacional[]>([])
   const [busca, setBusca] = useState('')
   const [filtroPrioridade, setFiltroPrioridade] = useState<PrioridadeDiligencia | ''>('')
   const [filtroStatus, setFiltroStatus] = useState<StatusDiligencia | ''>('')
   const [modalDiligencia, setModalDiligencia] = useState<DiligenciaOperacional | null>(null)
   const [confirmarConclusao, setConfirmarConclusao] = useState<DiligenciaOperacional | null>(null)
 
-  const recarregar = useCallback(() => {
-    setLista(ordenar(listarDiligencias()))
+  useEffect(() => {
+    listarDiligencias().then((data) => setLista(ordenar(data)))
   }, [])
 
-  function iniciar(d: DiligenciaOperacional) {
-    atualizarDiligencia(d.id, { status: 'EM_ANDAMENTO' })
-    recarregar()
+  const recarregar = useCallback(async () => {
+    const data = await listarDiligencias()
+    setLista(ordenar(data))
+  }, [])
+
+  async function iniciar(d: DiligenciaOperacional) {
+    await atualizarDiligencia(d.id, { status: 'EM_ANDAMENTO' })
+    await recarregar()
   }
 
-  function concluir(d: DiligenciaOperacional) {
-    atualizarDiligencia(d.id, { status: 'CONCLUIDA', dataExecucao: new Date().toISOString() })
-    recarregar()
+  async function concluir(d: DiligenciaOperacional) {
+    await atualizarDiligencia(d.id, { status: 'CONCLUIDA', dataExecucao: new Date().toISOString() })
+    await recarregar()
   }
 
   const filtrada = lista.filter((d) => {

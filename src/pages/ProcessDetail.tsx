@@ -45,7 +45,7 @@ const ACAO_LABEL: Record<string, string> = {
   LIGACAO_SECRETARIA: '📞 Lig. Secretaria',
   LIGACAO_GABINETE: '📞 Lig. Gabinete',
   EMAIL_VARA: '📧 Email Vara',
-  RECHECK: '🔄 Recheck',
+  RECHECK: '🔄 Revisar',
 }
 
 function getStatusColor(status: string): 'success' | 'default' | 'warning' | 'info' {
@@ -101,16 +101,23 @@ const ProcessDetail: React.FC = () => {
   const movementsQuery = useProcessMovements(cnj)
   const documentsQuery = useProcessDocuments(cnj)
   const { gargalo } = useGargaloProcessual(cnj)
-  const [diligencias, setDiligencias] = useState<DiligenciaOperacional[]>(() =>
-    cnj ? listarDiligenciasPorCNJ(cnj) : []
-  )
+  const [diligencias, setDiligencias] = useState<DiligenciaOperacional[]>([])
   const [retornoModal, setRetornoModal] = useState<DiligenciaOperacional | null>(null)
 
-  const recarregarDiligencias = useCallback(() => {
-    if (cnj) setDiligencias(listarDiligenciasPorCNJ(cnj))
+  useEffect(() => {
+    if (cnj) {
+      listarDiligenciasPorCNJ(cnj).then(setDiligencias)
+    }
   }, [cnj])
 
-  const gerarDiligencia = useCallback(() => {
+  const recarregarDiligencias = useCallback(async () => {
+    if (cnj) {
+      const data = await listarDiligenciasPorCNJ(cnj)
+      setDiligencias(data)
+    }
+  }, [cnj])
+
+  const gerarDiligencia = useCallback(async () => {
     if (!cnj || !gargalo) return
     const jaExiste = diligencias.some(
       d => d.tipoGargalo === gargalo.tipo && d.status !== 'CONCLUIDA'
@@ -120,8 +127,8 @@ const ProcessDetail: React.FC = () => {
       return
     }
     const nova = criarDiligenciaDeGargalo(cnj, cadastro?.clienteNome, gargalo)
-    salvarDiligencia(nova)
-    recarregarDiligencias()
+    await salvarDiligencia(nova)
+    await recarregarDiligencias()
     showToast('Diligência criada com sucesso.')
   }, [cnj, gargalo, diligencias, cadastro, showToast, recarregarDiligencias])
 

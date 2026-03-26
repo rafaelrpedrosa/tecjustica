@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Card, { CardContent } from '@/components/common/Card'
 import Button from '@/components/common/Button'
@@ -25,9 +25,16 @@ function calcularMetricas(lista: DiligenciaOperacional[]) {
 
 const DashboardOperacional: React.FC = () => {
   const navigate = useNavigate()
-  const [lista, setLista] = useState<DiligenciaOperacional[]>(() => listarDiligencias())
+  const [lista, setLista] = useState<DiligenciaOperacional[]>([])
 
-  const recarregar = useCallback(() => setLista(listarDiligencias()), [])
+  useEffect(() => {
+    listarDiligencias().then(setLista)
+  }, [])
+
+  const recarregar = useCallback(async () => {
+    const data = await listarDiligencias()
+    setLista(data)
+  }, [])
 
   const m = calcularMetricas(lista)
 
@@ -52,7 +59,7 @@ const DashboardOperacional: React.FC = () => {
     LIGACAO_SECRETARIA: '📞 Secretaria',
     LIGACAO_GABINETE: '📞 Gabinete',
     EMAIL_VARA: '📧 Email',
-    RECHECK: '🔄 Recheck',
+    RECHECK: '🔄 Revisar',
   }
 
   return (
