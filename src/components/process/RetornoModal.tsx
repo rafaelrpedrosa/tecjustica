@@ -23,8 +23,8 @@ export const RetornoModal: React.FC<Props> = ({ diligencia, onClose, onSaved }) 
   const [proximaData, setProximaData] = useState(diligencia.proximaData ?? '')
   const [responsavel, setResponsavel] = useState(diligencia.responsavel ?? '')
 
-  function handleSalvar() {
-    atualizarDiligencia(diligencia.id, {
+  async function handleSalvar() {
+    await atualizarDiligencia(diligencia.id, {
       status,
       retorno: retorno || undefined,
       proximaAcao: proximaAcao || undefined,
