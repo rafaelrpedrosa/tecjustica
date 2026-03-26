@@ -1961,6 +1961,113 @@ app.post('/api/ia/chat', mcpLimiter, async (req, res) => {
   }
 })
 
+// ── Clientes ─────────────────────────────────────────────────────────────────
+function clienteToCamel(c) {
+  return {
+    id: c.id,
+    nome: c.nome,
+    cpfCnpj: c.cpf_cnpj ?? undefined,
+    whatsapp: c.whatsapp ?? undefined,
+    email: c.email ?? undefined,
+    notas: c.notas ?? undefined,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+  }
+}
+
+function clienteToSnake(input) {
+  const out = {}
+  if (input.nome !== undefined) out.nome = input.nome
+  if (input.cpfCnpj !== undefined) out.cpf_cnpj = input.cpfCnpj
+  if (input.whatsapp !== undefined) out.whatsapp = input.whatsapp
+  if (input.email !== undefined) out.email = input.email
+  if (input.notas !== undefined) out.notas = input.notas
+  return out
+}
+
+// GET /api/clientes — listar todos
+app.get('/api/clientes', generalLimiter, async (_req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' })
+  const { data, error } = await supabase
+    .from('clientes')
+    .select('*')
+    .order('nome', { ascending: true })
+  if (error) {
+    console.error('GET /api/clientes:', error.message)
+    return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+  }
+  return res.json((data || []).map(clienteToCamel))
+})
+
+// GET /api/clientes/:id — buscar por id
+app.get('/api/clientes/:id', generalLimiter, async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' })
+  const { data, error } = await supabase
+    .from('clientes')
+    .select('*')
+    .eq('id', req.params.id)
+    .single()
+  if (error) {
+    if (error.code === 'PGRST116') return res.status(404).json({ error: 'Cliente não encontrado.' })
+    console.error('GET /api/clientes/:id:', error.message)
+    return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+  }
+  return res.json(clienteToCamel(data))
+})
+
+// POST /api/clientes — criar
+app.post('/api/clientes', generalLimiter, async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' })
+  const { nome, cpfCnpj, whatsapp, email, notas } = req.body
+  if (!nome?.trim()) return res.status(400).json({ error: 'Nome é obrigatório.' })
+  const payload = clienteToSnake({ nome: nome.trim(), cpfCnpj, whatsapp, email, notas })
+  const { data, error } = await supabase
+    .from('clientes')
+    .insert(payload)
+    .select()
+    .single()
+  if (error) {
+    console.error('POST /api/clientes:', error.message)
+    return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+  }
+  return res.status(201).json(clienteToCamel(data))
+})
+
+// PUT /api/clientes/:id — atualizar
+app.put('/api/clientes/:id', generalLimiter, async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' })
+  const updates = clienteToSnake(req.body)
+  if (Object.keys(updates).length === 0)
+    return res.status(400).json({ error: 'Nenhum campo para atualizar.' })
+  updates.updated_at = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('clientes')
+    .update(updates)
+    .eq('id', req.params.id)
+    .select()
+    .single()
+  if (error) {
+    if (error.code === 'PGRST116') return res.status(404).json({ error: 'Cliente não encontrado.' })
+    console.error('PUT /api/clientes/:id:', error.message)
+    return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+  }
+  return res.json(clienteToCamel(data))
+})
+
+// DELETE /api/clientes/:id — remover
+app.delete('/api/clientes/:id', generalLimiter, async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' })
+  const { error } = await supabase
+    .from('clientes')
+    .delete()
+    .eq('id', req.params.id)
+  if (error) {
+    console.error('DELETE /api/clientes/:id:', error.message)
+    return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+  }
+  return res.status(204).send()
+})
+
 // Iniciar servidor
 app.listen(PORT, () => {
   console.log(`🚀 Backend API Server rodando em http://localhost:${PORT}`);
