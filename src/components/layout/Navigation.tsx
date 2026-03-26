@@ -69,6 +69,7 @@ const Navigation: React.FC = () => {
                 )}
               </>
             )}
+            {navLink('/clientes', '👤 Clientes')}
             {navLink('/dashboard-operacional', '📊 Dashboard')}
             {navLink('/dashboard-tempos', '⏱ Tempos')}
             {navLink('/ia', '🤖 Assistente IA')}
