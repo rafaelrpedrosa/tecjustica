@@ -1497,6 +1497,130 @@ app.post('/api/escritorio/monitorar', async (req, res) => {
 });
 
 /**
+ * GET /api/escritorio/metricas-tempo
+ * Métricas de tempo processual por tribunal e tipo de ação
+ */
+app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' })
+  try {
+    const periodo = req.query.periodo || 'tudo'
+
+    // 1. CNJs monitorados
+    const { data: eps, error: epsErr } = await supabase
+      .from('escritorio_processos').select('cnj')
+    if (epsErr) {
+      console.error('metricas-tempo escritorio:', epsErr.message)
+      return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+    }
+    if (!eps || eps.length === 0) {
+      return res.json({
+        porTribunal: [], porTipoAcao: [],
+        resumo: { totalProcessos: 0, processosComMovimentos: 0, processosComSentenca: 0, processosEmLiquidacao: 0, mediaGeralDias: null },
+      })
+    }
+
+    const cnjs = eps.map(e => e.cnj)
+
+    // 2. Processos com movimentos via FK process_movements.process_id → processes.id
+    let query = supabase
+      .from('processes')
+      .select('cnj, tribunal, classe, data_abertura, process_movements(data, descricao)')
+      .in('cnj', cnjs)
+
+    if (periodo === '6m') {
+      query = query.gte('data_abertura', new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10))
+    } else if (periodo === '1a') {
+      query = query.gte('data_abertura', new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10))
+    }
+
+    const { data: processos, error: procErr } = await query
+    if (procErr) {
+      console.error('metricas-tempo processos:', procErr.message)
+      return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+    }
+
+    // 3. Padrões de detecção de fases
+    const SENTENCA = ['sentença', 'julgado', 'procedente', 'improcedente', 'dispositivo', 'resolv']
+    const LIQUIDACAO = ['liquidação', 'cumprimento de sentença', 'execução de título', 'cálculo de liquidação', 'rpv', 'precatório', 'requisição de pagamento']
+
+    function norm(s) { return (s || '').toLowerCase().normalize('NFD').replace(/\p{Mn}/gu, '') }
+    function diasEntre(d1, d2) { return Math.round((new Date(d2) - new Date(d1)) / 86400000) }
+    function findMov(movs, padroes) {
+      return movs.find(m => padroes.some(p => norm(m.descricao).includes(norm(p))))
+    }
+    function media(arr) { return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null }
+
+    // 4. Calcular métricas
+    const byTribunal = {}
+    const byTipo = {}
+    let totalComMovimentos = 0, totalComSentenca = 0, totalEmLiquidacao = 0
+    const temposTotais = []
+
+    for (const p of processos || []) {
+      const movs = (p.process_movements || []).sort((a, b) => new Date(a.data) - new Date(b.data))
+      if (movs.length === 0) continue
+      totalComMovimentos++
+
+      const tribunal = p.tribunal || 'Não informado'
+      const tipo = p.classe || 'Não informado'
+      if (!byTribunal[tribunal]) byTribunal[tribunal] = { distSentencaDias: [], sentLiquidDias: [] }
+      if (!byTipo[tipo]) byTipo[tipo] = { temposTotais: [], total: 0 }
+      byTipo[tipo].total++
+
+      if (!p.data_abertura) continue
+
+      const movSentenca = findMov(movs, SENTENCA)
+      const movsAposSentenca = movSentenca
+        ? movs.filter(m => new Date(m.data) >= new Date(movSentenca.data))
+        : []
+      const movLiquidacao = movsAposSentenca.length ? findMov(movsAposSentenca, LIQUIDACAO) : null
+      const ultimaMov = movs[movs.length - 1]
+
+      if (movSentenca) {
+        totalComSentenca++
+        byTribunal[tribunal].distSentencaDias.push(diasEntre(p.data_abertura, movSentenca.data))
+      }
+      if (movLiquidacao && movSentenca) {
+        totalEmLiquidacao++
+        byTribunal[tribunal].sentLiquidDias.push(diasEntre(movSentenca.data, movLiquidacao.data))
+      }
+      const tempoTotal = diasEntre(p.data_abertura, ultimaMov.data)
+      temposTotais.push(tempoTotal)
+      byTipo[tipo].temposTotais.push(tempoTotal)
+    }
+
+    const porTribunal = Object.entries(byTribunal).map(([tribunal, d]) => ({
+      tribunal,
+      mediaDistribuicaoSentenca: media(d.distSentencaDias),
+      mediaSentencaLiquidacao: media(d.sentLiquidDias),
+      totalComSentenca: d.distSentencaDias.length,
+      totalEmLiquidacao: d.sentLiquidDias.length,
+    })).sort((a, b) => b.totalComSentenca - a.totalComSentenca)
+
+    const porTipoAcao = Object.entries(byTipo).map(([tipoAcao, d]) => ({
+      tipoAcao,
+      totalProcessos: d.total,
+      mediaTempoTotal: media(d.temposTotais),
+    })).sort((a, b) => b.totalProcessos - a.totalProcessos)
+
+    return res.json({
+      porTribunal,
+      porTipoAcao,
+      resumo: {
+        totalProcessos: (processos || []).length,
+        processosComMovimentos: totalComMovimentos,
+        processosComSentenca: totalComSentenca,
+        processosEmLiquidacao: totalEmLiquidacao,
+        mediaGeralDias: media(temposTotais),
+      },
+    })
+  } catch (err) {
+    console.error('metricas-tempo erro inesperado:', err.message)
+    return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+  }
+})
+
+/**
  * GET /api/escritorio/alertas
  * Lista alertas não lidos do escritório
  */
