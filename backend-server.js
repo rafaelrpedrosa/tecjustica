@@ -1675,9 +1675,12 @@ app.post('/api/diligencias', async (req, res) => {
 app.put('/api/diligencias/:id', async (req, res) => {
   if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
   const { id } = req.params;
-  const updates = diligenciaToSnake({ id, ...req.body });
-  // Remove null fields to avoid overwriting optional fields with null
+  const updates = diligenciaToSnake(req.body);
+  // Strip null values — prevents overwriting optional DB fields when caller omits them.
+  // NOTE: This means optional fields (responsavel, dataPrevista, retorno, etc.)
+  // cannot be explicitly cleared to NULL via this endpoint. Acceptable for current UI.
   Object.keys(updates).forEach(k => updates[k] === null && delete updates[k]);
+  delete updates.id; // id is used in the .eq() filter only, not in the update payload
   try {
     const { data, error } = await supabase
       .from('diligencias')
