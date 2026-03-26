@@ -21,6 +21,7 @@ export const RetornoModal: React.FC<Props> = ({ diligencia, onClose, onSaved }) 
   const [retorno, setRetorno] = useState(diligencia.retorno ?? '')
   const [proximaAcao, setProximaAcao] = useState(diligencia.proximaAcao ?? '')
   const [proximaData, setProximaData] = useState(diligencia.proximaData ?? '')
+  const [responsavel, setResponsavel] = useState(diligencia.responsavel ?? '')
 
   function handleSalvar() {
     atualizarDiligencia(diligencia.id, {
@@ -28,6 +29,7 @@ export const RetornoModal: React.FC<Props> = ({ diligencia, onClose, onSaved }) 
       retorno: retorno || undefined,
       proximaAcao: proximaAcao || undefined,
       proximaData: proximaData || undefined,
+      responsavel: responsavel || undefined,
       dataExecucao: status === 'CONCLUIDA' ? new Date().toISOString() : diligencia.dataExecucao,
     })
     onSaved()
@@ -92,6 +94,17 @@ export const RetornoModal: React.FC<Props> = ({ diligencia, onClose, onSaved }) 
               type="date"
               value={proximaData}
               onChange={(e) => setProximaData(e.target.value)}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Responsável</label>
+            <input
+              type="text"
+              value={responsavel}
+              onChange={(e) => setResponsavel(e.target.value)}
+              placeholder="Nome do responsável"
               className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
