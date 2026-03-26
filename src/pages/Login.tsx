@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import JusFlowLogo from '@/components/common/JusFlowLogo'
 
 const Login: React.FC = () => {
   const { signIn, session, loading } = useAuth()
@@ -28,11 +29,8 @@ const Login: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm bg-white border border-gray-200 rounded-xl shadow-sm p-8 space-y-6">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
-            ⚖
-          </div>
-          <h1 className="text-xl font-bold text-gray-900">RPAtec</h1>
+        <div className="flex justify-center pb-2">
+          <JusFlowLogo size="md" variant="full" />
         </div>
         <h2 className="text-lg font-semibold text-gray-800">Entrar no sistema</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
