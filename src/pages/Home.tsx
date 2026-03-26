@@ -6,6 +6,21 @@ import { ErrorAlert } from '@/components/common/ErrorAlert'
 
 const CNJ_REGEX = /^\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/
 
+/** Aplica a máscara NNNNNNN-DD.AAAA.J.TR.OOOO nos dígitos fornecidos */
+function formatCNJ(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 20)
+  let result = ''
+  for (let i = 0; i < digits.length; i++) {
+    if (i === 7) result += '-'
+    else if (i === 9) result += '.'
+    else if (i === 13) result += '.'
+    else if (i === 14) result += '.'
+    else if (i === 16) result += '.'
+    result += digits[i]
+  }
+  return result
+}
+
 function validateCNJ(value: string): boolean {
   return CNJ_REGEX.test(value)
 }
@@ -49,7 +64,7 @@ const Home: React.FC = () => {
                 id="cnj"
                 type="text"
                 value={cnj}
-                onChange={(e) => setCnj(e.target.value.toUpperCase())}
+                onChange={(e) => setCnj(formatCNJ(e.target.value))}
                 placeholder="Ex: 0000061-33.2026.5.06.0008"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -112,10 +127,10 @@ const Home: React.FC = () => {
       {/* Seção de Informações */}
       <Card>
         <CardContent className="py-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Sobre RPAtec</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Sobre o JusFlow</h3>
           <div className="text-gray-600 text-sm space-y-2">
             <div>
-              RPAtec é um sistema integrado para consulta e análise de processos judiciais brasileiros,
+              JusFlow é um sistema integrado para consulta e análise de processos judiciais brasileiros,
               utilizando dados do Banco Nacional de Processos (PDPJ) do CNJ.
             </div>
             <div className="mt-4">
