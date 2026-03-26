@@ -3,7 +3,7 @@
  * Com botão de refresh para forçar busca nova no MCP
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 
 interface CacheTimestampProps {
@@ -20,6 +20,7 @@ export function CacheTimestamp({
   ttlMinutes = 24 * 60, // default 24h em minutos
 }: CacheTimestampProps) {
   const [minutesAgo, setMinutesAgo] = useState<number | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (!timestamp) {
@@ -34,9 +35,10 @@ export function CacheTimestamp({
     }
 
     updateTime()
-    const interval = setInterval(updateTime, 60000) // atualiza a cada minuto
+    if (intervalRef.current) clearInterval(intervalRef.current)
+    intervalRef.current = setInterval(updateTime, 60_000) // atualiza a cada minuto
 
-    return () => clearInterval(interval)
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [timestamp])
 
   if (!timestamp || minutesAgo === null) {

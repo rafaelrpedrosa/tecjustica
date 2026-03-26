@@ -72,7 +72,7 @@ export default function MeusProcessos() {
     toastTimersRef.current.push(timer)
   }, [])
 
-  const handleRemover = async (cnj: string, clienteNome: string) => {
+  const handleRemover = useCallback(async (cnj: string, clienteNome: string) => {
     if (!confirm(`Remover "${clienteNome}" (${cnj}) do cadastro do escritório?`)) return
     try {
       await removerProcesso(cnj)
@@ -81,7 +81,7 @@ export default function MeusProcessos() {
     } catch {
       showToast('Erro ao remover processo.')
     }
-  }
+  }, [carregar, showToast])
 
   const handleMonitorar = useCallback(async (cnj: string) => {
     setMonitorando(cnj)
@@ -104,7 +104,7 @@ export default function MeusProcessos() {
     navigate(`/process/${encodeURIComponent(proc.cnj)}`)
   }, [navigate])
 
-  const handleMonitorarTodos = async () => {
+  const handleMonitorarTodos = useCallback(async () => {
     setMonitorando('todos')
     try {
       const res = await monitorarTodos()
@@ -115,7 +115,7 @@ export default function MeusProcessos() {
     } finally {
       setMonitorando(null)
     }
-  }
+  }, [carregar, showToast])
 
   const processosFiltered = useMemo(() => processos.filter(p => {
     const matchTexto = filtro === '' ||

@@ -4,6 +4,7 @@ import type {
   EscritorioAlerta,
   CadastroProcessoInput,
   MonitoramentoResultado,
+  MetricasTempo,
 } from '@/types/escritorio'
 
 export async function listarProcessos(): Promise<EscritorioProcesso[]> {
@@ -57,4 +58,13 @@ export async function verificarCadastro(cnj: string): Promise<EscritorioProcesso
   } catch {
     return null
   }
+}
+
+export async function listarMetricasTempo(
+  periodo: '6m' | '1a' | 'tudo' = 'tudo'
+): Promise<MetricasTempo> {
+  const res = await apiClient.get<MetricasTempo>(
+    `/api/escritorio/metricas-tempo?periodo=${periodo}`
+  )
+  return res.data
 }

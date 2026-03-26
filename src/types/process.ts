@@ -15,7 +15,7 @@ export interface Process {
   vara?: string
   descricao?: string
   resumo?: string
-  jsonResumo?: Record<string, any>
+  jsonResumo?: Record<string, unknown>
   createdAt?: string
   updatedAt?: string
 }

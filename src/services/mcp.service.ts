@@ -20,7 +20,7 @@ const backendClient = axios.create({
 /**
  * Chama ferramenta MCP via backend
  */
-async function callBackendAPI(endpoint: string, data: Record<string, any> = {}) {
+async function callBackendAPI(endpoint: string, data: Record<string, unknown> = {}) {
   try {
     if (import.meta.env.DEV) console.log(`📞 Chamando endpoint: ${endpoint}`)
 
@@ -39,12 +39,14 @@ async function callBackendAPI(endpoint: string, data: Record<string, any> = {}) 
 
     if (import.meta.env.DEV) console.debug(`✅ Resposta Backend recebida de ${endpoint}`)
     return response.data
-  } catch (error: any) {
+  } catch (error) {
     // Axios lança exceção em 4xx/5xx – extrai mensagem de erro se disponível
-    if (error.response?.data?.error) {
-      console.error(`❌ Erro Backend (${error.response.status}): ${error.response.data.error}`)
+    const axiosError = error as { response?: { status: number; data?: { error?: string } }; message?: string }
+    if (axiosError.response?.data?.error) {
+      console.error(`❌ Erro Backend (${axiosError.response.status}): ${axiosError.response.data.error}`)
     } else {
-      console.error(`❌ Erro ao chamar backend (${endpoint}):`, error.message || error)
+      const msg = error instanceof Error ? error.message : String(error)
+      console.error(`❌ Erro ao chamar backend (${endpoint}):`, msg)
     }
     return null
   }
@@ -61,7 +63,7 @@ export async function getProcessOverviewMCP(cnj: string) {
  * Busca processos por CPF/CNPJ
  */
 export async function searchProcessesMCP(cpfCnpj: string, tribunal?: string) {
-  const data: Record<string, any> = { cpf_cnpj: cpfCnpj }
+  const data: Record<string, unknown> = { cpf_cnpj: cpfCnpj }
   if (tribunal) data.tribunal = tribunal
   return callBackendAPI('/api/process/search', data)
 }
@@ -119,7 +121,7 @@ export async function getDocumentUrlMCP(cnj: string, docId: string) {
  * Busca precedentes jurídicos
  */
 export async function searchPrecedentsMCP(busca: string, orgaos?: string[], tipos?: string[]) {
-  const data: Record<string, any> = { busca }
+  const data: Record<string, unknown> = { busca }
   if (orgaos) data.orgaos = orgaos
   if (tipos) data.tipos = tipos
   return callBackendAPI('/api/precedentes/buscar', data)

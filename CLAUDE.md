@@ -133,7 +133,8 @@ TECJUSTICA_AUTH_TOKEN=<bearer token>          # backend exits if missing
 | `/search-cpf` | `SearchCPF.tsx` |
 | `/meus-processos` | `MeusProcessos.tsx` |
 | `/diligencias` | `FilaDiligencias.tsx` — fila operacional, filtros, ações por linha |
-| `/dashboard-operacional` | `DashboardOperacional.tsx` — 6 cards métricas + top-5 urgentes |
+| `/dashboard-operacional` | `DashboardOperacional.tsx` — 6 cards métricas + próximos 7 dias + top-5 urgentes |
+| `/login` | `Login.tsx` — formulário e-mail/senha, redireciona para `/` se já autenticado |
 
 `DocumentViewer` requires `cnj` passed via React Router `state` (set in `ProcessDetail` when clicking "Ler"). Without it, the viewer shows an error state.
 
@@ -157,8 +158,8 @@ Each MCP tool has its own parser in the backend (`parseVisaoGeral`, `parseMovime
 ### Navigation from Home
 `Home.tsx` navigates directly to `/process/:cnj` without pre-fetching — `ProcessDetail` handles loading and the "not found" state. Do not add a pre-fetch back.
 
-### Navigation Alert Polling
-`Navigation.tsx` polls `GET /api/escritorio/alertas` every 60s via `setInterval`, not on route change. This is intentional to avoid hammering the backend on every click.
+### Navigation Polling
+`Navigation.tsx` polls `GET /api/escritorio/alertas` E `listarDiligencias()` a cada 60s via `setInterval`. O segundo alimenta o badge de urgentes no link Diligências. Ambos rodam no mesmo interval para evitar dois timers.
 
 ### Backend Startup
 `backend-server.js` calls `process.exit(1)` if `TECJUSTICA_AUTH_TOKEN` is missing. Network errors in the browser console are expected when the backend is not running.
@@ -188,9 +189,24 @@ Cenários de teste em `src/utils/gargaloMocks.ts` (usar no console: `import { mo
 
 ### Diligências
 
-`src/services/diligencia.service.ts` — CRUD via localStorage, chave `'rpatec_diligencias'`. TODO: migrar para API.
+`src/services/diligencia.service.ts` — CRUD via REST `/api/diligencias` com fallback localStorage. Migração automática one-shot na primeira chamada bem-sucedida (flag `'rpatec_diligencias_migrated'`).
 Páginas: `src/pages/FilaDiligencias.tsx`, `src/pages/DashboardOperacional.tsx`.
 Modal: `src/components/process/RetornoModal.tsx`.
+
+### Diligências — Tabela Supabase
+
+Tabela `diligencias` (migration: `supabase/migrations/003_diligencias.sql`). Campos snake_case no banco; backend faz conversão via `diligenciaToCamel()` / `diligenciaToSnake()`. `id` é `text PRIMARY KEY` (UUID gerado no frontend via `crypto.randomUUID()`).
+
+### Auth — Supabase Auth
+
+`src/contexts/AuthContext.tsx` — `AuthProvider` + `useAuth()`. Rotas protegidas via `src/components/ProtectedRoute.tsx` (`<Outlet />`).
+`/login` é a única rota pública. Criar primeiro usuário no Supabase Dashboard → Authentication → Users → "Invite user".
+`supabase?.auth` (operador optional chain) — `supabase` pode ser `null` se env vars ausentes.
+
+### CSV Export — BOM para Excel
+
+Ao gerar CSV com acentos, prefixar com `'\uFEFF'` no Blob para Excel abrir sem corromper encoding.
+Exemplo: `new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })`
 
 ### ProcessDetail — Abas Dinâmicas
 
@@ -218,4 +234,4 @@ Nunca retornar `error.message` diretamente na resposta — expõe detalhes inter
 
 ---
 
-**Last Updated**: 2026-03-21 (sessão: motor gargalos nível 3, diligências, dashboard, correções segurança)
+**Last Updated**: 2026-03-25 (sessão: diligências API+Supabase, auth Supabase, CSV export, badge urgentes nav, semana à frente dashboard)

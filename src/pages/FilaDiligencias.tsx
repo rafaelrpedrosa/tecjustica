@@ -53,9 +53,39 @@ const ACAO_LABEL: Record<string, string> = {
   RECHECK: '🔄 Revisar',
 }
 
-const hoje = new Date().toISOString().slice(0, 10) // 'YYYY-MM-DD'
+function hojeLocal(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+const hoje = hojeLocal()
 const vencida = (d: DiligenciaOperacional): boolean =>
   !!d.proximaData && d.proximaData < hoje && d.status !== 'CONCLUIDA'
+
+function exportarCSV(dados: DiligenciaOperacional[]): void {
+  const headers = ['CNJ', 'Cliente', 'Gargalo', 'Dias Parado', 'Prioridade', 'Ação', 'Status', 'Responsável', 'Prazo', 'Retorno']
+  const rows = dados.map((d) => [
+    d.cnj,
+    d.clienteNome ?? '',
+    d.descricao,
+    d.diasParado,
+    d.prioridade,
+    ACAO_LABEL[d.acaoRecomendada] ?? d.acaoRecomendada,
+    STATUS_LABEL[d.status],
+    d.responsavel ?? '',
+    d.proximaData ?? '',
+    d.retorno ?? '',
+  ])
+  const csv = [headers, ...rows]
+    .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `diligencias-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 function ordenar(lista: DiligenciaOperacional[]): DiligenciaOperacional[] {
   return [...lista].sort((a, b) => {
@@ -73,6 +103,7 @@ const FilaDiligencias: React.FC = () => {
   const [filtroPrioridade, setFiltroPrioridade] = useState<PrioridadeDiligencia | ''>('')
   const [filtroStatus, setFiltroStatus] = useState<StatusDiligencia | ''>('')
   const [modalDiligencia, setModalDiligencia] = useState<DiligenciaOperacional | null>(null)
+  const [confirmarConclusao, setConfirmarConclusao] = useState<DiligenciaOperacional | null>(null)
 
   useEffect(() => {
     listarDiligencias().then((data) => setLista(ordenar(data)))
@@ -103,6 +134,14 @@ const FilaDiligencias: React.FC = () => {
     return matchBusca && matchPrioridade && matchStatus
   })
 
+  const filtrosAtivos = !!(busca || filtroPrioridade || filtroStatus)
+
+  const limparFiltros = useCallback(() => {
+    setBusca('')
+    setFiltroPrioridade('')
+    setFiltroStatus('')
+  }, [])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -113,9 +152,14 @@ const FilaDiligencias: React.FC = () => {
             {lista.filter(d => d.prioridade === 'URGENTE' && d.status !== 'CONCLUIDA').length} urgentes
           </p>
         </div>
-        <Button variant="secondary" onClick={() => navigate('/dashboard-operacional')}>
-          📊 Dashboard
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => exportarCSV(filtrada)}>
+            ⬇ Exportar CSV
+          </Button>
+          <Button variant="secondary" onClick={() => navigate('/dashboard-operacional')}>
+            📊 Dashboard
+          </Button>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -151,11 +195,28 @@ const FilaDiligencias: React.FC = () => {
               <option value="CONCLUIDA">Concluída</option>
               <option value="SEM_RETORNO">Sem retorno</option>
             </select>
+            {filtrosAtivos && (
+              <button
+                type="button"
+                onClick={limparFiltros}
+                aria-label="Limpar filtros"
+                className="px-3 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+              >
+                ✕ Limpar filtros
+              </button>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Tabela */}
+      {/* Contador de resultados */}
+      {filtrosAtivos && filtrada.length < lista.length && (
+        <p className="text-sm text-gray-500">
+          Exibindo <span className="font-medium">{filtrada.length}</span> de{' '}
+          <span className="font-medium">{lista.length}</span> diligência{lista.length !== 1 ? 's' : ''}
+        </p>
+      )}
+
       {filtrada.length === 0 ? (
         <Empty
           title="Nenhuma diligência encontrada"
@@ -242,13 +303,15 @@ const FilaDiligencias: React.FC = () => {
                         {d.status !== 'CONCLUIDA' && (
                           <>
                             <button
+                              type="button"
                               onClick={() => setModalDiligencia(d)}
                               className="px-2 py-1 bg-white border border-gray-300 rounded text-xs hover:bg-gray-50"
                             >
                               📝 Retorno
                             </button>
                             <button
-                              onClick={() => concluir(d)}
+                              type="button"
+                              onClick={() => setConfirmarConclusao(d)}
                               className="px-2 py-1 bg-white border border-gray-300 rounded text-xs hover:bg-gray-50"
                             >
                               ✓ Concluir
@@ -266,6 +329,43 @@ const FilaDiligencias: React.FC = () => {
             </table>
           </div>
         </Card>
+      )}
+
+      {confirmarConclusao && (
+        <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmar-conclusao-titulo"
+        onKeyDown={(e) => e.key === 'Escape' && setConfirmarConclusao(null)}
+        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      >
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
+            <h3 id="confirmar-conclusao-titulo" className="text-lg font-semibold text-gray-900 mb-2">Confirmar conclusão</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              Marcar a diligência de{' '}
+              <span className="font-medium">
+                {confirmarConclusao.clienteNome ?? confirmarConclusao.cnj}
+              </span>{' '}
+              como concluída?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setConfirmarConclusao(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => { concluir(confirmarConclusao).finally(() => setConfirmarConclusao(null)) }}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {modalDiligencia && (

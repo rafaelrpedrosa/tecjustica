@@ -43,3 +43,31 @@ export interface MonitoramentoResultado {
   ultimaVerificacao: string
   mensagem: string
 }
+
+export interface TribunalMetrica {
+  tribunal: string
+  mediaDistribuicaoSentenca: number | null
+  mediaSentencaLiquidacao: number | null
+  totalComSentenca: number
+  totalEmLiquidacao: number
+}
+
+export interface TipoAcaoMetrica {
+  tipoAcao: string
+  totalProcessos: number
+  mediaTempoTotal: number | null
+}
+
+export interface ResumoMetrica {
+  totalProcessos: number
+  processosComMovimentos: number
+  processosComSentenca: number
+  processosEmLiquidacao: number
+  mediaGeralDias: number | null
+}
+
+export interface MetricasTempo {
+  porTribunal: TribunalMetrica[]
+  porTipoAcao: TipoAcaoMetrica[]
+  resumo: ResumoMetrica
+}

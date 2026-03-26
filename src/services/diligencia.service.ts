@@ -4,8 +4,8 @@
 import { apiClient } from '@/services/api'
 import type { DiligenciaOperacional } from '@/types/diligencia'
 
-const STORAGE_KEY = 'rpatec_diligencias'
-const MIGRATION_FLAG = 'rpatec_diligencias_migrated'
+const STORAGE_KEY = 'jusflow_diligencias'
+const MIGRATION_FLAG = 'jusflow_diligencias_migrated'
 
 function getLocal(): DiligenciaOperacional[] {
   try {
