@@ -29,7 +29,7 @@ const Tabs: React.FC<TabsProps> = ({ items, defaultValue, onChange }) => {
             onClick={() => handleTabChange(item.value)}
             className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
               activeTab === item.value
-                ? 'border-blue-600 text-blue-600'
+                ? 'border-primary text-primary'
                 : 'border-transparent text-gray-600 hover:text-gray-900'
             }`}
           >

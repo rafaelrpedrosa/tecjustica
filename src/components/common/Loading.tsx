@@ -13,7 +13,7 @@ const sizeClasses = {
 
 export const Spinner: React.FC<LoadingProps> = ({ text, size = 'md' }) => (
   <div className="flex flex-col items-center justify-center gap-4">
-    <div className={`${sizeClasses[size]} border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin`} />
+    <div className={`${sizeClasses[size]} border-4 border-primary-light border-t-primary rounded-full animate-spin`} />
     {text && <p className="text-gray-600 font-medium">{text}</p>}
   </div>
 )
