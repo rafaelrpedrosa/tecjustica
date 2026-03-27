@@ -46,11 +46,11 @@ const PORT = process.env.BACKEND_PORT || 3001;
 
 /**
  * Nível 1 — Geral: todas as rotas /api/*
- * 120 req / minuto por IP (2 req/s) — uso normal de uma aplicação
+ * 300 req / minuto por IP (5 req/s) — permite polling + operações normais
  */
 const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 120,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Muitas requisições. Aguarde um momento e tente novamente.' },
@@ -59,14 +59,14 @@ const generalLimiter = rateLimit({
 
 /**
  * Nível 2 — MCP intensivo: buscas e leitura de documentos
- * 20 req / minuto por IP — cada chamada consome crédito no MCP externo
+ * 60 req / minuto por IP — cada chamada consome crédito no MCP externo
  */
 const mcpLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 20,
+  max: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Limite de consultas atingido (20/min). Aguarde antes de realizar nova busca.' },
+  message: { error: 'Limite de consultas atingido (60/min). Aguarde antes de realizar nova busca.' },
 });
 
 /**
@@ -195,7 +195,6 @@ async function initializeMCPClient() {
 
   try {
     console.log(`🔌 Conectando ao MCP Server: ${MCP_SERVER_URL}`);
-    console.log(`   AUTH Token: ${AUTH_TOKEN ? 'presente ✓' : '⚠️ AUSENTE'}`);
 
     // Usar transporte Streamable HTTP (protocolo MCP moderno)
     const transport = new StreamableHTTPClientTransport(
@@ -312,7 +311,6 @@ async function callMCPTool(toolName, toolInput) {
       clientConnected = false;
 
       if (attempt < MAX_RETRIES) {
-        console.log(`🔄 Aguardando ${backoff}ms antes de tentar novamente...`);
         await sleep(backoff);
       }
     }
@@ -325,7 +323,20 @@ async function callMCPTool(toolName, toolInput) {
 
 // ─── Validação de inputs ──────────────────────────────────────────────────────
 
-const CNJ_RE = /^\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/;
+const CNJ_RE  = /^\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Valida UUID v4.
+ * @param {string} id
+ * @returns {{ ok: true, value: string } | { ok: false, error: string }}
+ */
+function validateUUID(id) {
+  if (!id || typeof id !== 'string') return { ok: false, error: 'ID ausente' };
+  const clean = id.trim();
+  if (!UUID_RE.test(clean)) return { ok: false, error: 'ID com formato inválido' };
+  return { ok: true, value: clean };
+}
 
 /**
  * Valida número CNJ no formato NNNNNNN-DD.AAAA.J.TT.OOOO.
@@ -485,7 +496,8 @@ function extractMCPText(result) {
  */
 function isMCPError(text) {
   if (!text) return true;
-  return /NAO encontrado|não encontrado|^Erro|retornou HTTP [45]/i.test(text);
+  // Ancorado ao início — evita falso positivo para textos com "não encontrado" em partes/documentos
+  return /^(NAO encontrado|não encontrado|Processo não encontrado|Erro:|.*retornou HTTP [45])/i.test(text.trim());
 }
 
 /**
@@ -614,6 +626,86 @@ function parseMovimentos(text) {
  *  A) [N] YYYY-MM-DD | titulo (Tipo) | N pag | N chars | ACESSO\n   ID: uuid
  *  B) N. titulo\n   Data: YYYY-MM-DD\n   ID: uuid\n   Tipo: ...
  */
+function movementHash(mov) {
+  return mov.hash_unico || `${mov.data || ''}-${mov.tipo || ''}-${mov.descricao || ''}`.slice(0, 240);
+}
+
+async function hydrateProcessCache(cnj, movementLimit = 100) {
+  if (!supabase) return null;
+
+  let processo = null;
+  const { data: existing } = await supabase
+    .from('processes')
+    .select('id, cnj, tribunal, classe, assunto, status, valor, juiz, data_abertura')
+    .eq('cnj', cnj)
+    .maybeSingle();
+
+  processo = existing || null;
+
+  if (!processo || !processo.data_abertura || !processo.tribunal || !processo.classe || !processo.assunto) {
+    try {
+      const result = await callMCPTool('pdpj_visao_geral_processo', { numero_processo: cnj });
+      const { text, isError } = parseMCPResponse(result, 'pdpj_visao_geral_processo');
+      if (text && !isError && !isMCPError(text)) {
+        const parsed = parseVisaoGeral(text, cnj);
+        const { data: upserted } = await supabase
+          .from('processes')
+          .upsert({
+            cnj,
+            tribunal: parsed.tribunal || null,
+            classe: parsed.classe || null,
+            assunto: parsed.assunto || null,
+            status: parsed.status || null,
+            valor: parsed.valor || null,
+            juiz: parsed.juiz || null,
+            data_abertura: parsed.data_abertura || null,
+            json_resumo: parsed,
+          }, { onConflict: 'cnj' })
+          .select('id, cnj, tribunal, classe, assunto, status, valor, juiz, data_abertura')
+          .single();
+        processo = upserted || processo;
+      }
+    } catch (err) {
+      console.warn(`[hydrateProcessCache] Falha ao hidratar visao geral de ${cnj}:`, err.message);
+    }
+  }
+
+  if (!processo?.id) return processo;
+
+  const { count: movementCount } = await supabase
+    .from('process_movements')
+    .select('*', { count: 'exact', head: true })
+    .eq('process_id', processo.id);
+
+  if (!movementCount) {
+    try {
+      const result = await callMCPTool('pdpj_list_movimentos', { numero_processo: cnj, limit: movementLimit });
+      const { text, isError } = parseMCPResponse(result, 'pdpj_list_movimentos');
+      if (text && !isError) {
+        const movimentos = parseMovimentos(text);
+        if (movimentos.length > 0) {
+          const rows = movimentos.map(mov => ({
+            process_id: processo.id,
+            data: mov.data,
+            descricao: mov.descricao || mov.tipo || 'Movimento processual',
+            orgao: mov.orgao || null,
+            tipo: mov.tipo || null,
+            hash_unico: movementHash(mov),
+          }));
+          const { error } = await supabase
+            .from('process_movements')
+            .upsert(rows, { onConflict: 'hash_unico' });
+          if (error) console.warn(`[hydrateProcessCache] Falha ao salvar movimentos de ${cnj}:`, error.message);
+        }
+      }
+    } catch (err) {
+      console.warn(`[hydrateProcessCache] Falha ao hidratar movimentos de ${cnj}:`, err.message);
+    }
+  }
+
+  return processo;
+}
+
 function parseDocumentos(text) {
   const docs = [];
   const lines = text.split('\n');
@@ -978,6 +1070,39 @@ app.post('/api/process/documento/conteudo', mcpLimiter, async (req, res) => {
 });
 
 /**
+ * POST /api/process/documentos/conteudo-batch - Ler conteúdo de múltiplos documentos
+ * Body: { numero_processo: string, documento_ids: string[] }
+ */
+app.post('/api/process/documentos/conteudo-batch', mcpLimiter, async (req, res) => {
+  try {
+    const { numero_processo, documento_ids } = req.body;
+
+    if (!numero_processo || !Array.isArray(documento_ids) || documento_ids.length === 0) {
+      return res.status(400).json({ error: 'numero_processo e documento_ids (array) são obrigatórios' });
+    }
+
+    try {
+      const result = await callMCPTool('pdpj_read_documentos_batch', {
+        numero_processo,
+        documento_ids,
+      });
+      const { text, isError } = parseMCPResponse(result, 'pdpj_read_documentos_batch');
+      if (!text || isError || isMCPError(text)) {
+        return res.status(404).json({ error: text || 'Documentos não encontrados ou sem conteúdo' });
+      }
+      audit(req, 'READ_DOCUMENTOS_BATCH', 'document', numero_processo);
+      res.json({ conteudo: text, documento_ids });
+    } catch (mcpError) {
+      console.error('❌ MCP Error (batch):', mcpError.message);
+      res.status(404).json({ error: 'Documentos não encontrados ou indisponíveis no momento' });
+    }
+  } catch (error) {
+    console.error('Erro interno:', error);
+    res.status(500).json({ error: 'Erro ao processar requisição' });
+  }
+});
+
+/**
  * POST /api/process/documento/url - Obter URL do documento
  * Body: { numero_processo: string, documento_id: string }
  */
@@ -1189,6 +1314,7 @@ app.get('/api/escritorio/processos', async (req, res) => {
     const result = escritorio.map(e => ({
       id: e.id,
       cnj: e.cnj,
+      clienteId: e.cliente_id,
       clienteNome: e.cliente_nome,
       clientePolo: e.cliente_polo,
       responsavel: e.responsavel,
@@ -1219,7 +1345,7 @@ app.post('/api/escritorio/processos', mcpLimiter, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
 
-    const { cnj, clienteNome, clientePolo, responsavel, vara, monitorar = true, notas } = req.body;
+    const { cnj, clienteNome, clientePolo, clienteId, responsavel, vara, monitorar = true, notas } = req.body;
 
     if (!cnj || !clienteNome || !clientePolo) {
       return res.status(400).json({ error: 'cnj, clienteNome e clientePolo são obrigatórios' });
@@ -1239,6 +1365,7 @@ app.post('/api/escritorio/processos', mcpLimiter, async (req, res) => {
         cnj: cnjValidado.value,
         cliente_nome: clienteNome,
         cliente_polo: clientePolo,
+        cliente_id: clienteId || null,
         responsavel: responsavel || null,
         vara: vara || null,
         monitorar,
@@ -1266,6 +1393,9 @@ app.post('/api/escritorio/processos', mcpLimiter, async (req, res) => {
             classe: parsed.classe,
             assunto: parsed.assunto,
             status: parsed.status,
+            valor: parsed.valor || null,
+            juiz: parsed.juiz || null,
+            data_abertura: parsed.data_abertura || null,
             json_resumo: parsed,
           }, { onConflict: 'cnj' }).then(() => {
             console.log(`✅ Dados MCP salvos para ${cnjValidado.value}`);
@@ -1279,6 +1409,7 @@ app.post('/api/escritorio/processos', mcpLimiter, async (req, res) => {
     res.status(201).json({
       id: cadastro.id,
       cnj: cadastro.cnj,
+      clienteId: cadastro.cliente_id,
       clienteNome: cadastro.cliente_nome,
       clientePolo: cadastro.cliente_polo,
       responsavel: cadastro.responsavel,
@@ -1307,7 +1438,7 @@ app.put('/api/escritorio/processos/:cnj', async (req, res) => {
     if (!cnjV.ok) return res.status(400).json({ error: cnjV.error });
     const cnj = cnjV.value;
     const updates = {};
-    const { clienteNome, clientePolo, responsavel, vara, monitorar, notas } = req.body;
+    const { clienteNome, clientePolo, clienteId, responsavel, vara, monitorar, notas } = req.body;
 
     if (clienteNome !== undefined) updates.cliente_nome = clienteNome;
     if (clientePolo !== undefined) {
@@ -1316,6 +1447,7 @@ app.put('/api/escritorio/processos/:cnj', async (req, res) => {
       }
       updates.cliente_polo = clientePolo;
     }
+    if (clienteId !== undefined) updates.cliente_id = clienteId;
     if (responsavel !== undefined) updates.responsavel = responsavel;
     if (vara !== undefined) updates.vara = vara;
     if (monitorar !== undefined) updates.monitorar = monitorar;
@@ -1427,6 +1559,16 @@ app.post('/api/escritorio/monitorar/:cnj', mcpLimiter, async (req, res) => {
           else if (alerta) alertasCriados.push(alerta);
         }
 
+        try {
+          await createMovementApprovalDraft({
+            registro,
+            cnj,
+            movimento: movimentosNovos[0],
+          });
+        } catch (notifyErr) {
+          console.warn('?????? Erro ao preparar mensagem para aprovacao humana:', notifyErr.message);
+        }
+
         // Atualiza último hash e data de verificação
         const { error: updateHashError } = await supabase
           .from('escritorio_processos')
@@ -1438,6 +1580,17 @@ app.post('/api/escritorio/monitorar/:cnj', mcpLimiter, async (req, res) => {
         if (updateHashError) console.warn('⚠️ Erro ao atualizar hash:', updateHashError.message);
       } else {
         // Sem novidades — só atualiza data de verificação
+        try {
+          if (shouldSendQuarterlyStatus(registro.last_client_notification_at)) {
+            await createQuarterlyApprovalDraft({
+              registro,
+              cnj,
+              movimento: movimentos[0] || null,
+            });
+          }
+        } catch (notifyErr) {
+          console.warn('?????? Erro ao preparar atualizacao trimestral para aprovacao humana:', notifyErr.message);
+        }
         const { error: updateVerifError } = await supabase
           .from('escritorio_processos')
           .update({ ultima_verificacao: new Date().toISOString() })
@@ -1495,7 +1648,7 @@ app.post('/api/escritorio/monitorar', async (req, res) => {
         if (movimentos.length === 0) continue;
 
         const { data: reg } = await supabase
-          .from('escritorio_processos').select('ultimo_hash_movimento').eq('cnj', cnj).single();
+          .from('escritorio_processos').select('*').eq('cnj', cnj).single();
 
         if (!reg) continue;
         const hashNovo = movimentos[0].hash_unico ||
@@ -1504,10 +1657,30 @@ app.post('/api/escritorio/monitorar', async (req, res) => {
         if (reg.ultimo_hash_movimento !== hashNovo) {
           const descricao = `Novo movimento: ${(movimentos[0].descricao || '').slice(0, 200)}`;
           await supabase.from('escritorio_alertas').insert({ cnj, tipo: 'NOVO_MOVIMENTO', descricao });
+          try {
+            await createMovementApprovalDraft({
+              registro: reg,
+              cnj,
+              movimento: movimentos[0],
+            });
+          } catch (notifyErr) {
+            console.warn(`?????? Erro ao preparar mensagem para aprovacao humana em ${cnj}:`, notifyErr.message);
+          }
           await supabase.from('escritorio_processos')
             .update({ ultimo_hash_movimento: hashNovo, ultima_verificacao: new Date().toISOString() })
             .eq('cnj', cnj);
         } else {
+          try {
+            if (shouldSendQuarterlyStatus(reg.last_client_notification_at)) {
+              await createQuarterlyApprovalDraft({
+                registro: reg,
+                cnj,
+                movimento: movimentos[0] || null,
+              });
+            }
+          } catch (notifyErr) {
+            console.warn(`?????? Erro ao preparar atualizacao trimestral para aprovacao humana em ${cnj}:`, notifyErr.message);
+          }
           await supabase.from('escritorio_processos')
             .update({ ultima_verificacao: new Date().toISOString() }).eq('cnj', cnj);
         }
@@ -1527,6 +1700,90 @@ function findMov(movs, padroes) {
   return movs.find(m => padroes.some(p => norm(m.descricao).includes(norm(p))))
 }
 function media(arr) { return arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null }
+
+/**
+ * POST /api/escritorio/sincronizar-assuntos
+ * Atualiza campo assunto de todos os processos do escritório que estão sem assunto no Supabase
+ */
+app.post('/api/escritorio/sincronizar-assuntos', mcpLimiter, async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' })
+  try {
+    const { data: eps } = await supabase.from('escritorio_processos').select('cnj')
+    if (!eps || eps.length === 0) return res.json({ atualizados: 0, total: 0 })
+
+    const cnjs = eps.map(e => e.cnj)
+    const { data: processos } = await supabase
+      .from('processes')
+      .select('cnj, assunto')
+      .in('cnj', cnjs)
+
+    const semAssunto = (processos || [])
+      .filter(p => !p.assunto)
+      .map(p => p.cnj)
+
+    // CNJs do escritório que nem existem ainda na tabela processes
+    const existentes = new Set((processos || []).map(p => p.cnj))
+    const inexistentes = cnjs.filter(c => !existentes.has(c))
+    const paraAtualizar = [...new Set([...semAssunto, ...inexistentes])]
+
+    if (paraAtualizar.length === 0) return res.json({ atualizados: 0, total: cnjs.length })
+
+    let atualizados = 0
+    const erros = []
+    for (let i = 0; i < paraAtualizar.length; i++) {
+      const cnj = paraAtualizar[i]
+      await (async (cnj) => {
+        try {
+          const result = await callMCPTool('pdpj_visao_geral_processo', { numero_processo: cnj })
+          const { text, isError } = parseMCPResponse(result, 'pdpj_visao_geral_processo')
+          if (!text || isError) {
+            console.warn(`[sincronizar-assuntos] MCP sem texto para ${cnj} (isError=${isError})`)
+            erros.push({ cnj, motivo: 'mcp_sem_texto' })
+            return
+          }
+          if (isMCPError(text)) {
+            console.warn(`[sincronizar-assuntos] MCP retornou erro para ${cnj}: ${text.substring(0, 80)}`)
+            erros.push({ cnj, motivo: 'mcp_erro', detalhe: text.substring(0, 80) })
+            return
+          }
+          const parsed = parseVisaoGeral(text, cnj)
+          if (!parsed.assunto) {
+            // Log primeiros 200 chars para entender o formato da resposta
+            console.warn(`[sincronizar-assuntos] assunto não encontrado para ${cnj}. Início do texto: ${text.substring(0, 200)}`)
+            erros.push({ cnj, motivo: 'assunto_vazio' })
+          }
+          // Upsert mesmo sem assunto — salva tribunal/classe/data para outras métricas
+          const { error: upsertErr } = await supabase.from('processes').upsert({
+            cnj,
+            tribunal: parsed.tribunal || null,
+            classe: parsed.classe || null,
+            assunto: parsed.assunto || null,
+            status: parsed.status || null,
+            valor: parsed.valor > 0 ? parsed.valor : null,
+            juiz: parsed.juiz || null,
+            data_abertura: parsed.data_abertura || null,
+          }, { onConflict: 'cnj' })
+          if (upsertErr) {
+            console.error(`[sincronizar-assuntos] upsert falhou para ${cnj}:`, upsertErr.message)
+            erros.push({ cnj, motivo: 'upsert_erro', detalhe: upsertErr.message })
+            return
+          }
+          atualizados++
+        } catch (err) {
+          console.warn(`[sincronizar-assuntos] Falha em ${cnj}:`, err.message)
+          erros.push({ cnj, motivo: 'excecao', detalhe: err.message })
+        }
+      })(cnj)
+      // Pausa entre chamadas para não saturar o servidor MCP
+      if (i < paraAtualizar.length - 1) await new Promise(r => setTimeout(r, 1500))
+    }
+
+    res.json({ atualizados, total: cnjs.length, semAssunto: paraAtualizar.length, erros })
+  } catch (err) {
+    console.error('sincronizar-assuntos erro:', err.message)
+    res.status(500).json({ error: 'Erro interno ao processar operação.' })
+  }
+})
 
 /**
  * GET /api/escritorio/metricas-tempo
@@ -1553,23 +1810,88 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
 
     const cnjs = eps.map(e => e.cnj)
 
-    // 2. Processos com movimentos via FK process_movements.process_id → processes.id
-    let query = supabase
+    // Usar dados cacheados no Supabase — sem chamadas MCP ao vivo.
+    // Busca processes + movements separadamente e faz join em memória.
+    let procQuery = supabase
       .from('processes')
-      .select('cnj, tribunal, classe, data_abertura, process_movements(data, descricao)')
+      .select('id, cnj, tribunal, classe, assunto, data_abertura')
       .in('cnj', cnjs)
 
     if (periodo === '6m') {
-      query = query.gte('data_abertura', new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10))
+      procQuery = procQuery.gte('data_abertura', new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10))
     } else if (periodo === '1a') {
-      query = query.gte('data_abertura', new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10))
+      procQuery = procQuery.gte('data_abertura', new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10))
     }
 
-    const { data: processos, error: procErr } = await query
+    const { data: processos, error: procErr } = await procQuery
     if (procErr) {
       console.error('metricas-tempo processos:', procErr.message)
       return res.status(500).json({ error: 'Erro interno ao processar operação.' })
     }
+
+    // Buscar movimentações de todos os processos encontrados
+    const processIds = (processos || []).map(p => p.id).filter(Boolean)
+    let movimentacoesMap = {}
+
+    if (processIds.length > 0) {
+      const { data: movRows } = await supabase
+        .from('process_movements')
+        .select('process_id, data, descricao')
+        .in('process_id', processIds)
+
+      for (const m of (movRows || [])) {
+        if (!movimentacoesMap[m.process_id]) movimentacoesMap[m.process_id] = []
+        movimentacoesMap[m.process_id].push({ data: m.data, descricao: m.descricao })
+      }
+    }
+
+    // Montar lista base com dados do Supabase
+    const base = cnjs.map(cnj => {
+      const p = (processos || []).find(x => x.cnj === cnj)
+      const movements = p ? (movimentacoesMap[p.id] || []) : []
+      return {
+        cnj,
+        tribunal: p?.tribunal || null,
+        classe: p?.classe || null,
+        assunto: p?.assunto || null,
+        data_abertura: p?.data_abertura || null,
+        process_movements: movements,
+      }
+    })
+
+    // Fallback MCP para processos sem movimentos no Supabase (máx 5 concorrentes)
+    const semMovimentos = base.filter(p => p.process_movements.length === 0)
+    const CONCORRENCIA = 5
+    for (let i = 0; i < semMovimentos.length; i += CONCORRENCIA) {
+      const lote = semMovimentos.slice(i, i + CONCORRENCIA)
+      await Promise.all(lote.map(async (p) => {
+        try {
+          const [visaoRes, movsRes] = await Promise.all([
+            p.tribunal ? null : callMCPTool('pdpj_visao_geral_processo', { numero_processo: p.cnj }),
+            callMCPTool('pdpj_list_movimentos', { numero_processo: p.cnj, limit: 100 }),
+          ])
+          if (visaoRes) {
+            const { text } = parseMCPResponse(visaoRes, 'pdpj_visao_geral_processo')
+            if (text && !isMCPError(text)) {
+              const parsed = parseVisaoGeral(text, p.cnj)
+              p.tribunal = parsed.tribunal || p.tribunal || 'Não informado'
+              p.classe = parsed.classe || p.classe || 'Não informado'
+              p.data_abertura = parsed.data_abertura || p.data_abertura
+            }
+          }
+          const { text: movsText } = parseMCPResponse(movsRes, 'pdpj_list_movimentos')
+          if (movsText && !isMCPError(movsText)) {
+            p.process_movements = parseMovimentos(movsText).map(m => ({ data: m.data, descricao: m.descricao || '' }))
+          }
+        } catch (err) {
+          console.warn(`[metricas-tempo] MCP fallback falhou para ${p.cnj}:`, err.message)
+        }
+      }))
+    }
+
+    const processosEnriquecidos = base
+      .map(p => ({ ...p, tribunal: p.tribunal || 'Não informado', classe: p.classe || 'Não informado', assunto: p.assunto || null }))
+      .filter(p => p.process_movements.length > 0)
 
     // 3. Padrões de detecção de fases
     const SENTENCA = ['sentença', 'julgado', 'procedente', 'improcedente', 'dispositivo', 'resolv']
@@ -1578,10 +1900,12 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
     // 4. Calcular métricas
     const byTribunal = {}
     const byTipo = {}
+    const byFase = {}
+    const byAssunto = {}
     let totalComMovimentos = 0, totalComSentenca = 0, totalEmLiquidacao = 0
     const temposTotais = []
 
-    for (const p of processos || []) {
+    for (const p of processosEnriquecidos || []) {
       const movs = (p.process_movements || []).sort((a, b) => new Date(a.data) - new Date(b.data))
       if (movs.length === 0) continue
       totalComMovimentos++
@@ -1589,6 +1913,11 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
       const tribunal = p.tribunal || 'Não informado'
       const tipo = p.classe || 'Não informado'
       if (!byTribunal[tribunal]) byTribunal[tribunal] = { distSentencaDias: [], sentLiquidDias: [] }
+
+      // Assunto — contar todos os processos com movimentos, independente de data_abertura
+      const assunto = p.assunto || 'Não informado'
+      if (!byAssunto[assunto]) byAssunto[assunto] = { total: 0 }
+      byAssunto[assunto].total++
 
       if (!p.data_abertura) continue
 
@@ -1603,8 +1932,11 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
       const ultimaMov = movs[movs.length - 1]
 
       if (movSentenca) {
-        totalComSentenca++
-        byTribunal[tribunal].distSentencaDias.push(diasEntre(p.data_abertura, movSentenca.data))
+        const dias = diasEntre(p.data_abertura, movSentenca.data)
+        if (dias >= 0) {
+          totalComSentenca++
+          byTribunal[tribunal].distSentencaDias.push(dias)
+        }
       }
       if (movLiquidacao && movSentenca) {
         totalEmLiquidacao++
@@ -1613,6 +1945,13 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
       const tempoTotal = diasEntre(p.data_abertura, ultimaMov.data)
       temposTotais.push(tempoTotal)
       byTipo[tipo].temposTotais.push(tempoTotal)
+
+      // Fase processual detectada
+      const fase = movLiquidacao ? 'Liquidação / Execução' : movSentenca ? 'Sentenciado' : 'Conhecimento'
+      if (!byFase[fase]) byFase[fase] = { total: 0, temposTotais: [] }
+      byFase[fase].total++
+      byFase[fase].temposTotais.push(tempoTotal)
+
     }
 
     const porTribunal = Object.entries(byTribunal).map(([tribunal, d]) => ({
@@ -1629,11 +1968,24 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
       mediaTempoTotal: media(d.temposTotais),
     })).sort((a, b) => b.totalProcessos - a.totalProcessos)
 
+    const porFase = Object.entries(byFase).map(([fase, d]) => ({
+      fase,
+      totalProcessos: d.total,
+      mediaTempoTotal: media(d.temposTotais),
+    })).sort((a, b) => b.totalProcessos - a.totalProcessos)
+
+    const porAssunto = Object.entries(byAssunto).map(([assunto, d]) => ({
+      assunto,
+      totalProcessos: d.total,
+    })).sort((a, b) => b.totalProcessos - a.totalProcessos).slice(0, 10)
+
     return res.json({
       porTribunal,
       porTipoAcao,
+      porFase,
+      porAssunto,
       resumo: {
-        totalProcessos: (processos || []).length,
+        totalProcessos: cnjs.length,
         processosComMovimentos: totalComMovimentos,
         processosComSentenca: totalComSentenca,
         processosEmLiquidacao: totalEmLiquidacao,
@@ -1678,10 +2030,13 @@ app.put('/api/escritorio/alertas/:id/lido', async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
 
+    const idV = validateUUID(req.params.id);
+    if (!idV.ok) return res.status(400).json({ error: idV.error });
+
     const { error } = await supabase
       .from('escritorio_alertas')
       .update({ lido: true })
-      .eq('id', req.params.id);
+      .eq('id', idV.value);
 
     if (error) return res.status(500).json({ error: 'Erro ao marcar alerta como lido' });
     res.json({ success: true });
@@ -1757,6 +2112,55 @@ function diligenciaToSnake(d) {
     proxima_data:     d.proximaData ?? null,
   };
 }
+
+/**
+ * GET /api/escritorio/status
+ * Combined endpoint: returns both alertas count and urgentes count
+ * Reduces polling requests from 2 per cycle to 1
+ */
+app.get('/api/escritorio/status', async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' });
+  try {
+    // Fetch alertas in parallel with diligencias
+    const [alertasResult, diligenciasResult] = await Promise.all([
+      supabase
+        .from('escritorio_alertas')
+        .select('id')
+        .eq('lido', false)
+        .limit(50),
+      supabase
+        .from('diligencias')
+        .select('*')
+        .order('data_criacao', { ascending: false })
+    ]);
+
+    const alertasError = alertasResult.error;
+    const diligenciasError = diligenciasResult.error;
+
+    if (alertasError) {
+      console.error('Erro ao buscar alertas em /api/escritorio/status:', alertasError.message);
+      return res.status(500).json({ error: 'Erro ao buscar alertas' });
+    }
+
+    if (diligenciasError) {
+      console.error('Erro ao buscar diligências em /api/escritorio/status:', diligenciasError.message);
+      return res.status(500).json({ error: 'Erro ao buscar diligências' });
+    }
+
+    const alertasCount = (alertasResult.data || []).length;
+    const urgentesCount = (diligenciasResult.data || [])
+      .filter(d => d.prioridade === 'URGENTE' && d.status !== 'CONCLUIDA')
+      .length;
+
+    res.json({
+      alertasCount,
+      urgentesCount
+    });
+  } catch (error) {
+    console.error('Erro GET /api/escritorio/status:', error.message);
+    res.status(500).json({ error: 'Erro ao buscar status' });
+  }
+});
 
 // GET /api/diligencias
 app.get('/api/diligencias', async (req, res) => {
@@ -1876,16 +2280,993 @@ app.use((err, req, res, next) => {
 });
 
 // ── IA Chat ──────────────────────────────────────────────────────────────────
-app.get('/api/ia/status', generalLimiter, (_req, res) => {
+async function resolveAIProvider() {
+  // Busca chaves salvas no Supabase (prioridade sobre env)
+  if (supabase) {
+    const keys = ['anthropicToken', 'openaiToken', 'geminiToken']
+    const results = await Promise.all(keys.map(k =>
+      supabase.from('settings').select('value').eq('key', k).maybeSingle()
+    ))
+    const [anthRow, oaiRow, gemRow] = results.map(r => r.data?.value || '')
+
+    if (anthRow && anthRow !== 'your-api-key-here') {
+      try { return { name: 'anthropic', client: new Anthropic({ apiKey: anthRow }) } } catch {}
+    }
+    if (oaiRow && oaiRow !== 'your-api-key-here') {
+      try { return { name: 'openai', client: new OpenAI({ apiKey: oaiRow }) } } catch {}
+    }
+    if (gemRow && gemRow !== 'your-api-key-here') {
+      try { return { name: 'gemini', client: new GoogleGenerativeAI(gemRow) } } catch {}
+    }
+  }
+  // Fallback: env vars (ignora placeholders)
+  const envAnth = process.env.ANTHROPIC_API_KEY
+  const envOai  = process.env.OPENAI_API_KEY
+  const envGem  = process.env.GEMINI_API_KEY
+  if (envAnth && envAnth !== 'your-api-key-here')
+    return { name: 'anthropic', client: new Anthropic({ apiKey: envAnth }) }
+  if (envOai  && envOai  !== 'your-api-key-here')
+    return { name: 'openai',    client: new OpenAI({ apiKey: envOai }) }
+  if (envGem  && envGem  !== 'your-api-key-here')
+    return { name: 'gemini',    client: new GoogleGenerativeAI(envGem) }
+  return null
+}
+
+app.get('/api/ia/status', generalLimiter, async (_req, res) => {
+  const provider = await resolveAIProvider()
   res.json({
-    configurado: !!aiProvider,
-    provedor: aiProvider?.name ?? null,
+    configurado: !!provider,
+    provedor: provider?.name ?? null,
   })
 })
 
+async function getSettingValue(key) {
+  if (!supabase) return null
+  const { data } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', key)
+    .maybeSingle()
+  return data?.value ?? null
+}
+
+async function resolveChatwootConfig() {
+  const [baseUrl, accountId, inboxId, apiToken, enabled, movementTypes] = await Promise.all([
+    getSettingValue('chatwootBaseUrl'),
+    getSettingValue('chatwootAccountId'),
+    getSettingValue('chatwootInboxId'),
+    getSettingValue('chatwootApiToken'),
+    getSettingValue('chatwootEnabled'),
+    getSettingValue('chatwootMovementTypes'),
+  ])
+
+  return {
+    enabled: enabled !== 'false',
+    baseUrl: baseUrl?.replace(/\/+$/, '') || null,
+    accountId: accountId || null,
+    inboxId: inboxId || null,
+    apiToken: apiToken || null,
+    movementTypes: movementTypes || 'sentenca,decisao,audiencia,intimacao,pagamento,encerramento',
+  }
+}
+
+function getMovementCategories(text) {
+  const normalized = norm(text)
+  const categories = new Set()
+
+  if (['sentenca', 'acordao', 'transitado em julgado', 'conclusos para julgamento'].some(pattern => normalized.includes(pattern))) {
+    categories.add('sentenca')
+  }
+  if (['decisao', 'despacho'].some(pattern => normalized.includes(pattern))) {
+    categories.add('decisao')
+  }
+  if (['audiencia', 'pericia'].some(pattern => normalized.includes(pattern))) {
+    categories.add('audiencia')
+  }
+  if (['intimacao', 'expedicao', 'mandado'].some(pattern => normalized.includes(pattern))) {
+    categories.add('intimacao')
+  }
+  if (['alvara', 'rpv', 'precatorio', 'pagamento', 'cumprimento de sentenca'].some(pattern => normalized.includes(pattern))) {
+    categories.add('pagamento')
+  }
+  if (['arquivado', 'baixa definitiva'].some(pattern => normalized.includes(pattern))) {
+    categories.add('encerramento')
+  }
+
+  return categories
+}
+
+async function isMovementWorthNotifying(text) {
+  const config = await resolveChatwootConfig()
+  const enabledTypes = new Set(
+    String(config.movementTypes || '')
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean)
+  )
+  const categories = getMovementCategories(text)
+  return Array.from(categories).some(category => enabledTypes.has(category))
+}
+
+function getPrimaryMovementCategory(text) {
+  const categories = getMovementCategories(text)
+  const priority = ['sentenca', 'pagamento', 'encerramento', 'audiencia', 'decisao', 'intimacao']
+  return priority.find(category => categories.has(category)) || 'geral'
+}
+
+function getMovementTemplate(category) {
+  const templates = {
+    sentenca: {
+      resumo: 'O processo recebeu uma decis?o importante do juiz ou do tribunal.',
+      impacto: 'Isso costuma ser um avan?o relevante, mas ainda pode haver recurso ou nova etapa.',
+      tom: 'Explique como avan?o importante, sem prometer resultado final.',
+    },
+    decisao: {
+      resumo: 'Houve uma decis?o ou despacho que faz o processo andar.',
+      impacto: 'Isso normalmente organiza a pr?xima fase ou define alguma provid?ncia no caso.',
+      tom: 'Explique que o processo andou e que seguimos acompanhando.',
+    },
+    audiencia: {
+      resumo: 'Foi marcada, realizada ou atualizada uma audi?ncia ou per?cia.',
+      impacto: 'Essa etapa ajuda o processo a produzir prova e esclarecer pontos importantes.',
+      tom: 'Use linguagem pr?tica e diga se ? uma fase de prova ou comparecimento.',
+    },
+    intimacao: {
+      resumo: 'Saiu uma comunica??o oficial do processo.',
+      impacto: 'Nem sempre exige a??o imediata do cliente, mas ? uma atualiza??o importante.',
+      tom: 'Deixe claro se parece apenas ci?ncia do andamento.',
+    },
+    pagamento: {
+      resumo: 'A movimenta??o fala de valores, pagamento ou fase de cumprimento.',
+      impacto: 'Isso pode aproximar o processo da etapa financeira, mas ainda pode haver tr?mites.',
+      tom: 'Seja cuidadoso para n?o prometer recebimento imediato.',
+    },
+    encerramento: {
+      resumo: 'O processo foi arquivado, baixado ou entrou em fase de encerramento.',
+      impacto: 'Isso geralmente indica fechamento ou pausa relevante do caso.',
+      tom: 'Explique como encerramento prov?vel, mas sem afirmar sem ressalvas.',
+    },
+    geral: {
+      resumo: 'Houve uma nova atualiza??o no processo.',
+      impacto: 'O caso seguiu para uma nova etapa e continuamos acompanhando.',
+      tom: 'Use linguagem simples e objetiva.',
+    },
+  }
+
+  return templates[category] || templates.geral
+}
+
+function buildLeigoFallback({ clienteNome, cnj, movimento }) {
+  const data = movimento?.data
+    ? new Date(movimento.data).toLocaleDateString('pt-BR')
+    : 'recentemente'
+  const descricao = movimento?.descricao || movimento?.tipo || 'houve uma nova movimentação'
+  return `Olá, ${clienteNome}. Tivemos uma atualização no processo ${cnj} em ${data}. Em termos simples: ${descricao}. Se quiser, podemos analisar com mais detalhe e explicar os próximos passos.`
+}
+
+async function explainMovementForClient({ clienteNome, cnj, movimento }) {
+  const provider = await resolveAIProvider()
+  if (!provider) return buildLeigoFallback({ clienteNome, cnj, movimento })
+
+  const prompt =
+    `Explique para um cliente leigo, em português do Brasil, a movimentação processual abaixo.\n` +
+    `Regras: seja simples, acolhedor e objetivo; não use juridiquês; não invente; não prometa resultado; termine oferecendo ajuda.\n\n` +
+    `Cliente: ${clienteNome}\n` +
+    `Processo: ${cnj}\n` +
+    `Data da movimentação: ${movimento?.data || 'não informada'}\n` +
+    `Tipo: ${movimento?.tipo || 'não informado'}\n` +
+    `Descrição: ${movimento?.descricao || 'não informada'}`
+
+  try {
+    if (provider.name === 'anthropic') {
+      const r = await provider.client.messages.create({
+        model: 'claude-haiku-4-5',
+        max_tokens: 300,
+        system: 'Você transforma andamentos processuais em mensagens simples para clientes de escritório de advocacia.',
+        messages: [{ role: 'user', content: prompt }],
+      })
+      return r.content[0].text
+    }
+
+    if (provider.name === 'openai') {
+      const r = await provider.client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        max_tokens: 300,
+        messages: [
+          { role: 'system', content: 'Você transforma andamentos processuais em mensagens simples para clientes de escritório de advocacia.' },
+          { role: 'user', content: prompt },
+        ],
+      })
+      return r.choices[0].message.content || buildLeigoFallback({ clienteNome, cnj, movimento })
+    }
+
+    if (provider.name === 'gemini') {
+      const model = provider.client.getGenerativeModel({ model: 'gemini-1.5-flash' })
+      const r = await model.generateContent(prompt)
+      return r.response.text()
+    }
+  } catch (err) {
+    console.warn('Falha ao gerar explicação leiga:', err.message)
+  }
+
+  return buildLeigoFallback({ clienteNome, cnj, movimento })
+}
+
+async function chatwootRequest(config, path, options = {}) {
+  const response = await fetch(`${config.baseUrl}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      api_access_token: config.apiToken,
+      ...(options.headers || {}),
+    },
+  })
+
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(`Chatwoot ${response.status}: ${body.slice(0, 300)}`)
+  }
+
+  if (response.status === 204) return null
+  return response.json()
+}
+
+function normalizePhoneToWhatsAppId(phone) {
+  if (!phone) return null
+  const digits = String(phone).replace(/\D/g, '')
+  if (!digits) return null
+  // Garante DDI 55 para números brasileiros sem DDI
+  let normalized = digits
+  if (digits.length === 10 || digits.length === 11) normalized = '55' + digits
+  return `${normalized}@s.whatsapp.net`
+}
+
+function normalizePhoneToE164(phone) {
+  if (!phone) return null
+
+  const raw = String(phone).trim()
+  if (!raw) return null
+
+  const hasPlusPrefix = raw.startsWith('+')
+  let digits = raw.replace(/\D/g, '')
+  if (!digits) return null
+
+  if (hasPlusPrefix) {
+    return `+${digits}`
+  }
+
+  if (digits.startsWith('00')) {
+    return `+${digits.slice(2)}`
+  }
+
+  if (digits.startsWith('55') && digits.length >= 12) {
+    return `+${digits}`
+  }
+
+  if (digits.length === 10 || digits.length === 11) {
+    return `+55${digits}`
+  }
+
+  return digits.length >= 8 ? `+${digits}` : null
+}
+
+async function findOrCreateChatwootContact(config, cliente) {
+  const normalizedPhone = normalizePhoneToE164(cliente.whatsapp)
+
+  try {
+    const existing = await chatwootRequest(
+      config,
+      `/api/v1/accounts/${config.accountId}/contacts/search?q=${encodeURIComponent(normalizedPhone || cliente.whatsapp || cliente.nome)}`
+    )
+    const found = existing?.payload?.find(item =>
+      item.phone_number === normalizedPhone || item.phone_number === cliente.whatsapp || item.name === cliente.nome
+    )
+    if (found) {
+      // Atualizar identifier para @s.whatsapp.net se ainda estiver no formato antigo "manual-*"
+      if (cliente.id && (!found.identifier || found.identifier.startsWith('manual-'))) {
+        try {
+          await chatwootRequest(config, `/api/v1/accounts/${config.accountId}/contacts/${found.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ identifier: cliente.id }),
+          })
+        } catch (patchErr) {
+          console.warn('Falha ao atualizar identifier do contato:', patchErr.message)
+        }
+      }
+      return found
+    }
+  } catch (err) {
+    console.warn('Falha ao pesquisar contato no Chatwoot:', err.message)
+  }
+
+  if (cliente.whatsapp && !normalizedPhone) {
+    throw new Error('Numero de WhatsApp invalido. Use DDI e DDD, por exemplo: +5585999999999')
+  }
+
+  return chatwootRequest(config, `/api/v1/accounts/${config.accountId}/contacts`, {
+    method: 'POST',
+    body: JSON.stringify({
+      inbox_id: Number(config.inboxId),
+      name: cliente.nome,
+      phone_number: normalizedPhone || undefined,
+      email: cliente.email || undefined,
+      identifier: cliente.id,
+    }),
+  })
+}
+
+async function sendProcessUpdateToChatwoot({ cliente, processo, movimento }) {
+  const config = await resolveChatwootConfig()
+  if (!config.enabled || !config.baseUrl || !config.accountId || !config.inboxId || !config.apiToken) return false
+  if (!cliente?.whatsapp) return false
+  if (!(await isMovementWorthNotifying(`${movimento?.tipo || ''} ${movimento?.descricao || ''}`))) return false
+
+  const contact = await findOrCreateChatwootContact(config, cliente)
+  const sourceId = contact?.contact_inboxes?.[0]?.source_id || contact?.pubsub_token || cliente.id
+  const conversation = await chatwootRequest(config, `/api/v1/accounts/${config.accountId}/conversations`, {
+    method: 'POST',
+    body: JSON.stringify({
+      source_id: String(sourceId),
+      inbox_id: Number(config.inboxId),
+      contact_id: Number(contact.id),
+      status: 'open',
+    }),
+  })
+
+  const content = await explainMovementForClient({
+    clienteNome: cliente.nome,
+    cnj: processo.cnj,
+    movimento,
+  })
+
+  await chatwootRequest(
+    config,
+    `/api/v1/accounts/${config.accountId}/conversations/${conversation.id}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        content,
+        message_type: 'outgoing',
+        private: false,
+      }),
+    }
+  )
+  return true
+}
+
+async function sendManualChatwootMessage({ nome, whatsapp, mensagem }) {
+  const config = await resolveChatwootConfig()
+  if (!config.enabled || !config.baseUrl || !config.accountId || !config.inboxId || !config.apiToken) {
+    throw new Error('Chatwoot não configurado.')
+  }
+
+  // Formato exigido pelo Chatwoot com Evolution API / WhatsApp Baileys
+  const whatsappId = normalizePhoneToWhatsAppId(whatsapp)
+  if (!whatsappId) throw new Error('Número de WhatsApp inválido para envio.')
+
+  const contact = await findOrCreateChatwootContact(config, {
+    id: whatsappId,   // identifier = source_id no inbox WhatsApp
+    nome,
+    whatsapp,
+  })
+
+  // source_id DEVE ser sempre o formato @s.whatsapp.net para Evolution API.
+  // Nunca usar contact_inboxes[0].source_id — pode ter formato antigo "manual-*".
+  const sourceId = whatsappId
+
+  const conversation = await chatwootRequest(config, `/api/v1/accounts/${config.accountId}/conversations`, {
+    method: 'POST',
+    body: JSON.stringify({
+      source_id: String(sourceId),
+      inbox_id: Number(config.inboxId),
+      contact_id: Number(contact.id),
+      status: 'open',
+    }),
+  })
+
+  await chatwootRequest(
+    config,
+    `/api/v1/accounts/${config.accountId}/conversations/${conversation.id}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        content: mensagem,
+        message_type: 'outgoing',
+        private: false,
+      }),
+    }
+  )
+}
+
+function clientMessageApprovalToCamel(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    cnj: row.cnj,
+    clienteId: row.cliente_id,
+    clienteNome: row.cliente_nome,
+    clienteWhatsapp: row.cliente_whatsapp,
+    sourceType: row.source_type,
+    sourceReference: row.source_reference,
+    titulo: row.titulo,
+    draftMessage: row.draft_message,
+    status: row.status,
+    payloadJson: row.payload_json || {},
+    approvedAt: row.approved_at,
+    sentAt: row.sent_at,
+    rejectedAt: row.rejected_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function getQuarterlyReference(date = new Date()) {
+  const quarter = Math.floor(date.getMonth() / 3) + 1
+  return `${date.getFullYear()}-Q${quarter}`
+}
+
+async function createClientMessageApproval({
+  cnj,
+  cliente,
+  sourceType,
+  sourceReference,
+  titulo,
+  draftMessage,
+  payloadJson = {},
+}) {
+  if (!supabase) throw new Error('Supabase nÃ£o configurado.')
+  if (!cliente?.nome || !cliente?.whatsapp) {
+    throw new Error('Cliente sem nome ou WhatsApp para notificacao.')
+  }
+
+  const { data: existing } = await supabase
+    .from('client_message_approvals')
+    .select('*')
+    .eq('cnj', cnj)
+    .eq('source_type', sourceType)
+    .eq('source_reference', sourceReference)
+    .maybeSingle()
+
+  if (existing && existing.status !== 'REJECTED') {
+    return clientMessageApprovalToCamel(existing)
+  }
+
+  if (existing?.status === 'REJECTED') {
+    const { data, error } = await supabase
+      .from('client_message_approvals')
+      .update({
+        cliente_id: cliente.id || null,
+        cliente_nome: cliente.nome,
+        cliente_whatsapp: cliente.whatsapp || null,
+        titulo: titulo || null,
+        draft_message: draftMessage,
+        status: 'PENDING',
+        payload_json: payloadJson,
+        approved_at: null,
+        sent_at: null,
+        rejected_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id)
+      .select('*')
+      .single()
+
+    if (error) throw error
+    return clientMessageApprovalToCamel(data)
+  }
+
+  const { data, error } = await supabase
+    .from('client_message_approvals')
+    .insert({
+      cnj,
+      cliente_id: cliente.id || null,
+      cliente_nome: cliente.nome,
+      cliente_whatsapp: cliente.whatsapp || null,
+      source_type: sourceType,
+      source_reference: sourceReference,
+      titulo: titulo || null,
+      draft_message: draftMessage,
+      status: 'PENDING',
+      payload_json: payloadJson,
+      updated_at: new Date().toISOString(),
+    })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return clientMessageApprovalToCamel(data)
+}
+
+function buildDocumentFallback({ clienteNome, cnj, documento }) {
+  const data = documento?.dataCriacao
+    ? new Date(documento.dataCriacao).toLocaleDateString('pt-BR')
+    : 'recentemente'
+  const tipo = documento?.tipo || 'documento'
+  const titulo = documento?.titulo || 'novo documento'
+  return `OlÃ¡, ${clienteNome}. Preparamos uma comunicacao sobre o processo ${cnj}. Foi juntado um ${tipo} em ${data}, identificado como "${titulo}". Se quiser, podemos te explicar em linguagem simples o que isso representa no andamento do caso.`
+}
+
+async function explainDocumentForClient({ clienteNome, cnj, documento }) {
+  const provider = await resolveAIProvider()
+  if (!provider) return buildDocumentFallback({ clienteNome, cnj, documento })
+
+  const prompt =
+    `Explique para um cliente leigo, em portugues do Brasil, a entrada de um documento processual.\n` +
+    `Regras: simples, acolhedor, objetivo, sem juridiques, sem inventar, sem prometer resultado, e termine oferecendo ajuda.\n\n` +
+    `Cliente: ${clienteNome}\n` +
+    `Processo: ${cnj}\n` +
+    `Documento: ${documento?.titulo || 'nao informado'}\n` +
+    `Tipo: ${documento?.tipo || 'nao informado'}\n` +
+    `Data: ${documento?.dataCriacao || 'nao informada'}\n` +
+    `Paginas: ${documento?.paginas || 'nao informado'}`
+
+  try {
+    if (provider.name === 'anthropic') {
+      const r = await provider.client.messages.create({
+        model: 'claude-haiku-4-5',
+        max_tokens: 300,
+        system: 'Voce transforma documentos processuais em mensagens simples para clientes de escritorio de advocacia.',
+        messages: [{ role: 'user', content: prompt }],
+      })
+      return r.content[0].text
+    }
+
+    if (provider.name === 'openai') {
+      const r = await provider.client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        max_tokens: 300,
+        messages: [
+          { role: 'system', content: 'Voce transforma documentos processuais em mensagens simples para clientes de escritorio de advocacia.' },
+          { role: 'user', content: prompt },
+        ],
+      })
+      return r.choices[0].message.content || buildDocumentFallback({ clienteNome, cnj, documento })
+    }
+
+    if (provider.name === 'gemini') {
+      const model = provider.client.getGenerativeModel({ model: 'gemini-1.5-flash' })
+      const r = await model.generateContent(prompt)
+      return r.response.text()
+    }
+  } catch (err) {
+    console.warn('Falha ao gerar explicacao leiga do documento:', err.message)
+  }
+
+  return buildDocumentFallback({ clienteNome, cnj, documento })
+}
+
+async function createMovementApprovalDraft({ registro, cnj, movimento, manual = false }) {
+  const cliente = await findClientForProcess(registro)
+  if (!cliente) {
+    throw new Error('Nenhum cliente vinculado foi encontrado para este processo.')
+  }
+  if (!cliente?.whatsapp) {
+    throw new Error(`O cliente ${cliente.nome} esta sem WhatsApp cadastrado.`)
+  }
+  if (!manual && !(await isMovementWorthNotifying(`${movimento?.tipo || ''} ${movimento?.descricao || ''}`))) {
+    throw new Error('Essa movimentacao nao esta habilitada para notificacao ao cliente.')
+  }
+
+  const sourceReferenceBase = movimento?.hash_unico ||
+    movimento?.id ||
+    `${movimento?.data || ''}-${(movimento?.descricao || '').slice(0, 80)}`
+
+  const draftMessage = await explainMovementForClient({
+    clienteNome: cliente.nome,
+    cnj,
+    movimento,
+  })
+
+  return createClientMessageApproval({
+    cnj,
+    cliente,
+    sourceType: manual ? 'MOVIMENTO_MANUAL' : 'MOVIMENTO_AUTO',
+    sourceReference: manual ? `${sourceReferenceBase}-${Date.now()}` : sourceReferenceBase,
+    titulo: movimento?.tipo || 'Movimentacao processual',
+    draftMessage,
+    payloadJson: {
+      movement: movimento || {},
+      category: getPrimaryMovementCategory(`${movimento?.tipo || ''} ${movimento?.descricao || ''}`),
+    },
+  })
+}
+
+async function createDocumentApprovalDraft({ registro, cnj, documento }) {
+  const cliente = await findClientForProcess(registro)
+  if (!cliente) {
+    throw new Error('Nenhum cliente vinculado foi encontrado para este processo.')
+  }
+  if (!cliente?.whatsapp) {
+    throw new Error(`O cliente ${cliente.nome} esta sem WhatsApp cadastrado.`)
+  }
+
+  const draftMessage = await explainDocumentForClient({
+    clienteNome: cliente.nome,
+    cnj,
+    documento,
+  })
+
+  return createClientMessageApproval({
+    cnj,
+    cliente,
+    sourceType: 'DOCUMENTO_MANUAL',
+    sourceReference: `${documento?.id || 'documento'}-${Date.now()}`,
+    titulo: documento?.titulo || documento?.tipo || 'Documento processual',
+    draftMessage,
+    payloadJson: {
+      document: documento || {},
+    },
+  })
+}
+
+function shouldSendQuarterlyStatus(lastNotificationAt) {
+  if (!lastNotificationAt) return true
+  const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000
+  return Date.now() - new Date(lastNotificationAt).getTime() >= ninetyDaysMs
+}
+
+function buildQuarterlyStatusFallback({ clienteNome, cnj, movimento }) {
+  if (movimento?.data) {
+    const data = new Date(movimento.data).toLocaleDateString('pt-BR')
+    const descricao = movimento.descricao || movimento.tipo || 'sem detalhe adicional'
+    return `Olá, ${clienteNome}. Passando para te atualizar sobre o processo ${cnj}. Neste período, seguimos acompanhando o caso e a movimentação mais recente que consta para nós é de ${data}: ${descricao}. Se quiser, podemos te explicar com calma o que isso significa na prática.`
+  }
+
+  return `Olá, ${clienteNome}. Passando para te atualizar sobre o processo ${cnj}. Neste momento, seguimos acompanhando normalmente e não identificamos uma novidade relevante desde o último retorno. Se quiser, podemos te explicar com calma a situação atual do processo.`
+}
+
+async function explainQuarterlyStatusForClient({ clienteNome, cnj, movimento }) {
+  const provider = await resolveAIProvider()
+  if (!provider) return buildQuarterlyStatusFallback({ clienteNome, cnj, movimento })
+
+  const prompt =
+    `Escreva uma atualização trimestral para um cliente leigo sobre o processo abaixo.\n` +
+    `Regras: português do Brasil, simples, acolhedor, sem juridiquês, sem inventar fatos, sem prometer resultado, e com no máximo 5 frases.\n\n` +
+    `Cliente: ${clienteNome}\n` +
+    `Processo: ${cnj}\n` +
+    `Última movimentação conhecida: ${movimento?.data || 'não informada'}\n` +
+    `Tipo da última movimentação: ${movimento?.tipo || 'não informado'}\n` +
+    `Descrição da última movimentação: ${movimento?.descricao || 'não informada'}\n` +
+    `Objetivo: avisar que estamos acompanhando o processo mesmo sem novidade relevante recente.`
+
+  try {
+    if (provider.name === 'anthropic') {
+      const r = await provider.client.messages.create({
+        model: 'claude-haiku-4-5',
+        max_tokens: 220,
+        system: 'Você escreve mensagens curtas de atualização processual para clientes de escritório de advocacia.',
+        messages: [{ role: 'user', content: prompt }],
+      })
+      return r.content[0].text
+    }
+
+    if (provider.name === 'openai') {
+      const r = await provider.client.chat.completions.create({
+        model: 'gpt-4o-mini',
+        max_tokens: 220,
+        messages: [
+          { role: 'system', content: 'Você escreve mensagens curtas de atualização processual para clientes de escritório de advocacia.' },
+          { role: 'user', content: prompt },
+        ],
+      })
+      return r.choices[0].message.content || buildQuarterlyStatusFallback({ clienteNome, cnj, movimento })
+    }
+
+    if (provider.name === 'gemini') {
+      const model = provider.client.getGenerativeModel({ model: 'gemini-1.5-flash' })
+      const r = await model.generateContent(prompt)
+      return r.response.text()
+    }
+  } catch (err) {
+    console.warn('Falha ao gerar atualização trimestral leiga:', err.message)
+  }
+
+  return buildQuarterlyStatusFallback({ clienteNome, cnj, movimento })
+}
+
+async function createQuarterlyApprovalDraft({ registro, cnj, movimento }) {
+  const cliente = await findClientForProcess(registro)
+  if (!cliente) {
+    throw new Error('Nenhum cliente vinculado foi encontrado para este processo.')
+  }
+  if (!cliente?.whatsapp) {
+    throw new Error(`O cliente ${cliente.nome} esta sem WhatsApp cadastrado.`)
+  }
+
+  const draftMessage = await explainQuarterlyStatusForClient({
+    clienteNome: cliente.nome,
+    cnj,
+    movimento,
+  })
+
+  return createClientMessageApproval({
+    cnj,
+    cliente,
+    sourceType: 'STATUS_TRIMESTRAL',
+    sourceReference: getQuarterlyReference(),
+    titulo: 'Atualizacao trimestral do processo',
+    draftMessage,
+    payloadJson: {
+      movement: movimento || null,
+      kind: 'quarterly_status',
+    },
+  })
+}
+
+async function sendQuarterlyStatusToChatwoot({ cliente, processo, movimento }) {
+  const config = await resolveChatwootConfig()
+  if (!config.enabled || !config.baseUrl || !config.accountId || !config.inboxId || !config.apiToken) return false
+  if (!cliente?.whatsapp) return false
+
+  const contact = await findOrCreateChatwootContact(config, cliente)
+  const sourceId = contact?.contact_inboxes?.[0]?.source_id || contact?.pubsub_token || cliente.id
+  const conversation = await chatwootRequest(config, `/api/v1/accounts/${config.accountId}/conversations`, {
+    method: 'POST',
+    body: JSON.stringify({
+      source_id: String(sourceId),
+      inbox_id: Number(config.inboxId),
+      contact_id: Number(contact.id),
+      status: 'open',
+    }),
+  })
+
+  const content = await explainQuarterlyStatusForClient({
+    clienteNome: cliente.nome,
+    cnj: processo.cnj,
+    movimento,
+  })
+
+  await chatwootRequest(
+    config,
+    `/api/v1/accounts/${config.accountId}/conversations/${conversation.id}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        content,
+        message_type: 'outgoing',
+        private: false,
+      }),
+    }
+  )
+
+  return true
+}
+
+async function markClientNotificationSent(cnj, type) {
+  if (!supabase) return
+  await supabase
+    .from('escritorio_processos')
+    .update({
+      last_client_notification_at: new Date().toISOString(),
+      last_client_notification_type: type,
+    })
+    .eq('cnj', cnj)
+}
+
+async function findClientForProcess(registro) {
+  if (!supabase) return null
+
+  if (registro?.cliente_id) {
+    const { data } = await supabase
+      .from('clientes')
+      .select('*')
+      .eq('id', registro.cliente_id)
+      .maybeSingle()
+    if (data) return clienteToCamel(data)
+  }
+
+  if (registro?.cliente_nome) {
+    const { data } = await supabase
+      .from('clientes')
+      .select('*')
+      .ilike('nome', registro.cliente_nome)
+      .limit(1)
+    if (data?.[0]) return clienteToCamel(data[0])
+  }
+
+  return null
+}
+
+app.get('/api/client-messages/pending/:cnj', generalLimiter, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase nÃ£o configurado' })
+
+    const cnjRaw = decodeURIComponent(req.params.cnj)
+    const cnjV = validateCNJ(cnjRaw)
+    if (!cnjV.ok) return res.status(400).json({ error: cnjV.error })
+
+    const { data, error } = await supabase
+      .from('client_message_approvals')
+      .select('*')
+      .eq('cnj', cnjV.value)
+      .eq('status', 'PENDING')
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return res.json((data || []).map(clientMessageApprovalToCamel))
+  } catch (err) {
+    console.error('client-messages/pending erro:', err.message)
+    return res.status(500).json({ error: 'Erro ao listar mensagens pendentes.' })
+  }
+})
+
+app.post('/api/client-messages/draft/movement', generalLimiter, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase nÃ£o configurado' })
+
+    const { cnj: cnjRaw, movement } = req.body || {}
+    const cnjV = validateCNJ(cnjRaw)
+    if (!cnjV.ok) return res.status(400).json({ error: cnjV.error })
+    if (!movement?.descricao?.trim()) {
+      return res.status(400).json({ error: 'descricao da movimentacao Ã© obrigatoria.' })
+    }
+
+    const { data: registro, error: regError } = await supabase
+      .from('escritorio_processos')
+      .select('*')
+      .eq('cnj', cnjV.value)
+      .single()
+
+    if (regError || !registro) {
+      return res.status(404).json({ error: 'Processo nÃ£o encontrado no cadastro do escritÃ³rio.' })
+    }
+
+    const draft = await createMovementApprovalDraft({
+      registro,
+      cnj: cnjV.value,
+      movimento: movement,
+      manual: true,
+    })
+
+    if (!draft) {
+      return res.status(400).json({ error: 'NÃ£o foi possÃ­vel preparar a mensagem. Verifique se hÃ¡ cliente vinculado, WhatsApp cadastrado e categoria habilitada.' })
+    }
+
+    return res.status(201).json(draft)
+  } catch (err) {
+    console.error('client-messages/draft/movement erro:', err.message)
+    return res.status(500).json({ error: 'Erro ao preparar mensagem da movimentacao.', details: err.message })
+  }
+})
+
+app.post('/api/client-messages/draft/document', generalLimiter, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase nÃ£o configurado' })
+
+    const { cnj: cnjRaw, document } = req.body || {}
+    const cnjV = validateCNJ(cnjRaw)
+    if (!cnjV.ok) return res.status(400).json({ error: cnjV.error })
+    if (!document?.id || !document?.titulo?.trim()) {
+      return res.status(400).json({ error: 'id e titulo do documento sÃ£o obrigatÃ³rios.' })
+    }
+
+    const { data: registro, error: regError } = await supabase
+      .from('escritorio_processos')
+      .select('*')
+      .eq('cnj', cnjV.value)
+      .single()
+
+    if (regError || !registro) {
+      return res.status(404).json({ error: 'Processo nÃ£o encontrado no cadastro do escritÃ³rio.' })
+    }
+
+    const draft = await createDocumentApprovalDraft({
+      registro,
+      cnj: cnjV.value,
+      documento: document,
+    })
+
+    if (!draft) {
+      return res.status(400).json({ error: 'NÃ£o foi possÃ­vel preparar a mensagem. Verifique se hÃ¡ cliente vinculado e WhatsApp cadastrado.' })
+    }
+
+    return res.status(201).json(draft)
+  } catch (err) {
+    console.error('client-messages/draft/document erro:', err.message)
+    return res.status(500).json({ error: 'Erro ao preparar mensagem do documento.', details: err.message })
+  }
+})
+
+app.post('/api/client-messages/:id/approve-send', generalLimiter, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase nÃ£o configurado' })
+
+    const id = req.params.id
+    const { draftMessage } = req.body || {}
+    const { data: row, error } = await supabase
+      .from('client_message_approvals')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (error || !row) {
+      return res.status(404).json({ error: 'Mensagem pendente nÃ£o encontrada.' })
+    }
+    if (row.status !== 'PENDING') {
+      return res.status(400).json({ error: 'A mensagem nÃ£o estÃ¡ mais pendente de aprovaÃ§Ã£o.' })
+    }
+
+    const content = String(draftMessage || row.draft_message || '').trim()
+    if (!content) {
+      return res.status(400).json({ error: 'A mensagem a ser enviada estÃ¡ vazia.' })
+    }
+
+    await sendManualChatwootMessage({
+      nome: row.cliente_nome,
+      whatsapp: row.cliente_whatsapp,
+      mensagem: content,
+    })
+
+    const notificationType = row.source_type === 'STATUS_TRIMESTRAL' ? 'trimestral' : 'manual_aprovado'
+    await markClientNotificationSent(row.cnj, notificationType)
+
+    const { error: updateError } = await supabase
+      .from('client_message_approvals')
+      .update({
+        draft_message: content,
+        status: 'SENT',
+        approved_at: new Date().toISOString(),
+        sent_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+
+    if (updateError) throw updateError
+    return res.json({ success: true })
+  } catch (err) {
+    console.error('client-messages/approve-send erro:', err.message)
+    return res.status(500).json({ error: 'Erro ao aprovar e enviar mensagem ao cliente.', details: err.message })
+  }
+})
+
+app.post('/api/client-messages/:id/reject', generalLimiter, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ error: 'Supabase nÃ£o configurado' })
+
+    const id = req.params.id
+    const { error } = await supabase
+      .from('client_message_approvals')
+      .update({
+        status: 'REJECTED',
+        rejected_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .eq('status', 'PENDING')
+
+    if (error) throw error
+    return res.json({ success: true })
+  } catch (err) {
+    console.error('client-messages/reject erro:', err.message)
+    return res.status(500).json({ error: 'Erro ao rejeitar mensagem pendente.' })
+  }
+})
+
+app.post('/api/chatwoot/test', generalLimiter, async (req, res) => {
+  const { nome, whatsapp, mensagem } = req.body || {}
+  if (!nome?.trim() || !whatsapp?.trim() || !mensagem?.trim()) {
+    return res.status(400).json({ error: 'nome, whatsapp e mensagem são obrigatórios.' })
+  }
+
+  try {
+    await sendManualChatwootMessage({
+      nome: nome.trim(),
+      whatsapp: whatsapp.trim(),
+      mensagem: mensagem.trim(),
+    })
+    return res.json({ success: true })
+  } catch (err) {
+    console.error('chatwoot/test erro:', err.message)
+    return res.status(500).json({
+      error: 'Erro ao enviar mensagem teste ao Chatwoot.',
+    })
+  }
+})
+
 app.post('/api/ia/chat', mcpLimiter, async (req, res) => {
+  const aiProvider = await resolveAIProvider()
   if (!aiProvider) return res.status(503).json({
-    error: 'IA não configurada. Defina ANTHROPIC_API_KEY, OPENAI_API_KEY ou GEMINI_API_KEY no .env.'
+    error: 'IA não configurada. Adicione uma chave de API em Configurações.'
   })
 
   const { cnj, pergunta, historico = [] } = req.body
@@ -1895,16 +3276,82 @@ app.post('/api/ia/chat', mcpLimiter, async (req, res) => {
     let contextoProcesso = ''
     if (cnj) {
       try {
-        const [visao, movs] = await Promise.allSettled([
-          callMCPTool('pdpj_visao_geral_processo', { cnj }),
-          callMCPTool('pdpj_list_movimentos', { cnj, limit: 15 }),
+        const [visao, movs, analise, listaDocRes] = await Promise.allSettled([
+          callMCPTool('pdpj_visao_geral_processo', { numero_processo: cnj }),
+          callMCPTool('pdpj_list_movimentos', { numero_processo: cnj, limit: 15 }),
+          callMCPTool('pdpj_analise_essencial', { numero_processo: cnj }),
+          callMCPTool('pdpj_list_documentos', { numero_processo: cnj, limit: 20 }),
         ])
+        if (visao.status === 'rejected') console.warn('[ia/chat] visao_geral falhou:', visao.reason?.message)
+        if (movs.status === 'rejected') console.warn('[ia/chat] list_movimentos falhou:', movs.reason?.message)
+        if (analise.status === 'rejected') console.warn('[ia/chat] analise_essencial falhou:', analise.reason?.message)
+        if (listaDocRes.status === 'rejected') console.warn('[ia/chat] list_documentos falhou:', listaDocRes.reason?.message)
         if (visao.status === 'fulfilled')
           contextoProcesso += `\n\n## Visão Geral ${cnj}\n` +
             JSON.stringify(parseMCPResponse(visao.value, 'pdpj_visao_geral_processo'), null, 2)
         if (movs.status === 'fulfilled')
           contextoProcesso += `\n\n## Últimas Movimentações\n` +
             JSON.stringify(parseMCPResponse(movs.value, 'pdpj_list_movimentos'), null, 2)
+        if (analise.status === 'fulfilled' && analise.value)
+          contextoProcesso += `\n\n## Análise de Documentos (peças iniciais e decisões)\n` +
+            JSON.stringify(parseMCPResponse(analise.value, 'pdpj_analise_essencial'), null, 2)
+
+        // Ler conteúdo dos documentos mais relevantes via batch
+        if (listaDocRes.status === 'fulfilled' && listaDocRes.value) {
+          const listaDoc = parseDocumentos(parseMCPResponse(listaDocRes.value, 'pdpj_list_documentos').text || '')
+          const PRIORIDADE = /sentença|decisão|acórdão|tutela|despacho|intimação|petição inicial|contestação/i
+          let relevantes = listaDoc
+            .filter(d => PRIORIDADE.test(d.titulo || d.tipo || ''))
+            .slice(0, 5)
+          // Fallback: se nenhum doc prioritário, usa os 5 primeiros da lista
+          if (!relevantes.length) {
+            relevantes = listaDoc.slice(0, 5)
+          }
+          if (relevantes.length) {
+            try {
+              const batchResult = await callMCPTool('pdpj_read_documentos_batch', {
+                numero_processo: cnj,
+                documento_ids: relevantes.map(d => d.id),
+              })
+              const { text: batchText } = parseMCPResponse(batchResult, 'pdpj_read_documentos_batch')
+              if (batchText && !isMCPError(batchText)) {
+                contextoProcesso += `\n\n## Conteúdo dos Documentos\n${batchText.slice(0, 30000)}`
+              } else {
+                // Fallback individual se batch falhar
+                const leituras = await Promise.allSettled(
+                  relevantes.map(d => callMCPTool('pdpj_read_documento', {
+                    numero_processo: cnj,
+                    documento_id: d.id,
+                  }))
+                )
+                leituras.forEach((r, i) => {
+                  if (r.status === 'fulfilled' && r.value) {
+                    const { text } = parseMCPResponse(r.value, 'pdpj_read_documento')
+                    if (text && !isMCPError(text)) {
+                      contextoProcesso += `\n\n## Documento: ${relevantes[i].titulo || relevantes[i].tipo}\n${text.slice(0, 6000)}`
+                    }
+                  }
+                })
+              }
+            } catch {
+              // Fallback individual se batch lançar exceção
+              const leituras = await Promise.allSettled(
+                relevantes.map(d => callMCPTool('pdpj_read_documento', {
+                  numero_processo: cnj,
+                  documento_id: d.id,
+                }))
+              )
+              leituras.forEach((r, i) => {
+                if (r.status === 'fulfilled' && r.value) {
+                  const { text } = parseMCPResponse(r.value, 'pdpj_read_documento')
+                  if (text && !isMCPError(text)) {
+                    contextoProcesso += `\n\n## Documento: ${relevantes[i].titulo || relevantes[i].tipo}\n${text.slice(0, 6000)}`
+                  }
+                }
+              })
+            }
+          }
+        }
       } catch (mcpErr) {
         console.error('ia/chat MCP error:', mcpErr.message)
         contextoProcesso = '\n\n[Dados do processo indisponíveis no momento]'
@@ -1962,11 +3409,27 @@ app.post('/api/ia/chat', mcpLimiter, async (req, res) => {
 })
 
 // ── Clientes ─────────────────────────────────────────────────────────────────
+function formatCpfCnpj(value) {
+  if (!value) return value
+  const digits = String(value).replace(/\D/g, '').slice(0, 14)
+  if (digits.length <= 11) {
+    return digits
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+  }
+  return digits
+    .replace(/(\d{2})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1/$2')
+    .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
+}
+
 function clienteToCamel(c) {
   return {
     id: c.id,
     nome: c.nome,
-    cpfCnpj: c.cpf_cnpj ?? undefined,
+    cpfCnpj: c.cpf_cnpj ? formatCpfCnpj(c.cpf_cnpj) : undefined,
     whatsapp: c.whatsapp ?? undefined,
     email: c.email ?? undefined,
     notas: c.notas ?? undefined,
@@ -1995,6 +3458,10 @@ app.get('/api/clientes', generalLimiter, async (_req, res) => {
   if (error) {
     console.error('GET /api/clientes:', error.message)
     return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+  }
+  console.log('GET /api/clientes — dados retornados:', data?.length || 0, 'clientes')
+  if (data && data.length > 0) {
+    console.log('  Primeiro cliente:', data[0])
   }
   return res.json((data || []).map(clienteToCamel))
 })
@@ -2068,9 +3535,89 @@ app.delete('/api/clientes/:id', generalLimiter, async (req, res) => {
   return res.status(204).send()
 })
 
+// ─── Settings (Configurações) ────────────────────────────────────────────────
+
+// POST /api/settings — salvar configuração
+app.post('/api/settings', generalLimiter, async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' })
+  const { key, value } = req.body
+  if (!key?.trim()) return res.status(400).json({ error: 'Chave é obrigatória.' })
+
+  const { data, error } = await supabase
+    .from('settings')
+    .upsert({ key: key.trim(), value }, { onConflict: 'key' })
+    .select()
+    .single()
+
+  if (error) {
+    console.error('POST /api/settings:', error.message)
+    return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+  }
+  return res.json(data)
+})
+
+const SETTINGS_ALLOWLIST = new Set([
+  'anthropic_token', 'openai_token', 'gemini_token',
+  'chatwoot_url', 'chatwoot_token', 'chatwoot_inbox_id',
+  'chatwoot_account_id', 'chatwoot_enabled', 'chatwoot_auto_send',
+])
+
+// GET /api/settings/:key — obter configuração
+app.get('/api/settings/:key', generalLimiter, async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' })
+  if (!SETTINGS_ALLOWLIST.has(req.params.key)) {
+    return res.status(400).json({ error: 'Chave de configuração inválida.' })
+  }
+  const { data, error } = await supabase
+    .from('settings')
+    .select('*')
+    .eq('key', req.params.key)
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') return res.status(404).json({ error: 'Configuração não encontrada.' })
+    console.error('GET /api/settings/:key:', error.message)
+    return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+  }
+  return res.json(data)
+})
+
+// DELETE /api/settings/:key — deletar configuração
+app.delete('/api/settings/:key', generalLimiter, async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: 'Supabase não configurado' })
+  const { error } = await supabase
+    .from('settings')
+    .delete()
+    .eq('key', req.params.key)
+
+  if (error) {
+    console.error('DELETE /api/settings/:key:', error.message)
+    return res.status(500).json({ error: 'Erro interno ao processar operação.' })
+  }
+  return res.status(204).send()
+})
+
 // Iniciar servidor
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Backend API Server rodando em http://localhost:${PORT}`);
   console.log(`📡 MCP Server: ${MCP_SERVER_URL}`);
   console.log(`📡 Usando Streamable HTTP transport para comunicação MCP`);
 });
+
+// Graceful shutdown — fecha conexões antes de encerrar
+function gracefulShutdown(signal) {
+  console.log(`\n[shutdown] Sinal ${signal} recebido. Encerrando servidor...`);
+  server.close(() => {
+    console.log('[shutdown] Servidor encerrado com sucesso.');
+    process.exit(0);
+  });
+  // Force exit após 10s se alguma conexão travar
+  setTimeout(() => {
+    console.warn('[shutdown] Timeout — forçando encerramento.');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+

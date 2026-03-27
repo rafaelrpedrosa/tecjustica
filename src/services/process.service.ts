@@ -45,7 +45,7 @@ export async function getProcessByCNJ(cnj: string): Promise<Process | null> {
   // 1. Verifica cache em memória
   const cached = getCache<Process>(cacheKey)
   if (cached) {
-    console.log(`✓ Processo ${cnj} carregado do cache`)
+    if (import.meta.env.DEV) console.log(`✓ Processo ${cnj} carregado do cache`)
     return cached
   }
 
@@ -109,7 +109,7 @@ export async function getProcessParties(cnj: string): Promise<Party[]> {
 
   const cached = getCache<Party[]>(cacheKey)
   if (cached) {
-    console.log(`✓ Partes do processo ${cnj} carregadas do cache`)
+    if (import.meta.env.DEV) console.log(`✓ Partes do processo ${cnj} carregadas do cache`)
     return cached
   }
 
@@ -154,7 +154,7 @@ export async function getProcessMovements(cnj: string): Promise<ProcessMovement[
 
   const cached = getCache<ProcessMovement[]>(cacheKey)
   if (cached) {
-    console.log(`✓ Movimentos do processo ${cnj} carregados do cache`)
+    if (import.meta.env.DEV) console.log(`✓ Movimentos do processo ${cnj} carregados do cache`)
     return cached
   }
 

@@ -108,6 +108,16 @@ export async function readDocumentMCP(cnj: string, docId: string) {
 }
 
 /**
+ * Lê conteúdo de múltiplos documentos em uma única chamada
+ */
+export async function readDocumentsBatchMCP(cnj: string, docIds: string[]) {
+  return callBackendAPI('/api/process/documentos/conteudo-batch', {
+    numero_processo: cnj,
+    documento_ids: docIds,
+  })
+}
+
+/**
  * Obtém URL do documento (PDF original)
  */
 export async function getDocumentUrlMCP(cnj: string, docId: string) {

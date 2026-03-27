@@ -8,9 +8,18 @@ import { ErrorAlert } from '@/components/common/ErrorAlert'
 import Empty from '@/components/common/Empty'
 import { searchByCPFCNPJ } from '@/services/process.service'
 
+interface ProcessoMCP {
+  numero_processo?: string
+  cnj?: string
+  id?: string
+  tribunal?: string
+  classe?: string
+  status?: string
+}
+
 interface SearchState {
   query: string
-  results: any[]
+  results: ProcessoMCP[]
   loading: boolean
   error: string | null
   searched: boolean
@@ -183,7 +192,7 @@ const SearchCPF: React.FC = () => {
                 {state.results.length !== 1 ? 's' : ''}
               </p>
               <div className="space-y-3">
-                {state.results.map((proc: any, idx: number) => {
+                {state.results.map((proc, idx) => {
                   const cnj = proc.numero_processo || proc.cnj || proc.id
                   return (
                     <Card key={cnj || idx} className="hover:shadow-md transition-shadow">

@@ -35,7 +35,7 @@ export async function listDocuments(cnj: string): Promise<Document[]> {
 
   const cached = getCache<Document[]>(cacheKey)
   if (cached) {
-    console.log(`✓ Documentos do processo ${cnj} carregados do cache`)
+    if (import.meta.env.DEV) console.log(`✓ Documentos do processo ${cnj} carregados do cache`)
     return cached
   }
 
@@ -92,6 +92,34 @@ export async function readDocument(
     }
   } catch (error) {
     console.error(`Erro ao ler documento ${docId}:`, error)
+    return null
+  }
+}
+
+/**
+ * Lê conteúdo de múltiplos documentos em uma única chamada batch
+ */
+export async function readDocumentsBatch(
+  cnj: string,
+  docIds: string[]
+): Promise<{ conteudo: string; documento_ids: string[] } | null> {
+  try {
+    const mcpData = await mcpService.readDocumentsBatchMCP(cnj, docIds) as {
+      conteudo?: string
+      documento_ids?: string[]
+    } | null
+
+    if (!mcpData) {
+      console.error(`Batch de documentos não encontrado para ${cnj}`)
+      return null
+    }
+
+    return {
+      conteudo: mcpData.conteudo || '',
+      documento_ids: mcpData.documento_ids || docIds,
+    }
+  } catch (error) {
+    console.error(`Erro ao ler batch de documentos do processo ${cnj}:`, error)
     return null
   }
 }

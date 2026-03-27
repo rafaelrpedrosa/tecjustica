@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Card, { CardContent } from '@/components/common/Card'
 import Badge from '@/components/common/Badge'
 import Tabs from '@/components/common/Tabs'
@@ -25,6 +26,14 @@ import {
 } from '@/services/diligencia.service'
 import { RetornoModal } from '@/components/process/RetornoModal'
 import type { DiligenciaOperacional, StatusDiligencia } from '@/types/diligencia'
+import ClientMessageApprovalPanel from '@/components/process/ClientMessageApprovalPanel'
+import {
+  approveAndSendClientMessage,
+  createDocumentDraft,
+  createMovementDraft,
+  listPendingClientMessages,
+  rejectClientMessage,
+} from '@/services/client-message.service'
 
 // Constante fora do componente — abas base sem badge dinâmico
 const BASE_TABS = [
@@ -59,6 +68,7 @@ const ProcessDetail: React.FC = () => {
   const { cnj } = useParams<{ cnj: string }>()
   const navigate = useNavigate()
   const location = useLocation()
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState(
     (location.state as { returnTab?: string } | null)?.returnTab || 'overview'
   )
@@ -69,9 +79,12 @@ const ProcessDetail: React.FC = () => {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (cnj) {
-      verificarCadastro(cnj).then(setCadastro).catch(() => {})
-    }
+    if (!cnj) return
+    let isMounted = true
+    verificarCadastro(cnj)
+      .then(data => { if (isMounted) setCadastro(data) })
+      .catch(() => { if (isMounted) setCadastro(null) })
+    return () => { isMounted = false }
   }, [cnj])
 
   // Cleanup do timer ao desmontar
@@ -100,14 +113,71 @@ const ProcessDetail: React.FC = () => {
   const partiesQuery = useProcessParties(cnj)
   const movementsQuery = useProcessMovements(cnj)
   const documentsQuery = useProcessDocuments(cnj)
+  const pendingMessagesQuery = useQuery({
+    queryKey: ['client-message-approvals', cnj],
+    queryFn: () => listPendingClientMessages(cnj!),
+    enabled: !!cnj && !!cadastro,
+    staleTime: 30 * 1000,
+  })
   const { gargalo } = useGargaloProcessual(cnj)
   const [diligencias, setDiligencias] = useState<DiligenciaOperacional[]>([])
   const [retornoModal, setRetornoModal] = useState<DiligenciaOperacional | null>(null)
 
+  const refreshPendingMessages = useCallback(() => {
+    if (!cnj) return Promise.resolve()
+    return queryClient.invalidateQueries({ queryKey: ['client-message-approvals', cnj] })
+  }, [cnj, queryClient])
+
+  const createMovementDraftMutation = useMutation({
+    mutationFn: createMovementDraft,
+    onSuccess: async () => {
+      await refreshPendingMessages()
+      showToast('Rascunho criado e aguardando aprovacao humana.')
+    },
+    onError: (error) => {
+      showToast(error instanceof Error ? error.message : 'Nao foi possivel preparar a mensagem desta movimentacao.')
+    },
+  })
+
+  const createDocumentDraftMutation = useMutation({
+    mutationFn: createDocumentDraft,
+    onSuccess: async () => {
+      await refreshPendingMessages()
+      showToast('Rascunho criado e aguardando aprovacao humana.')
+    },
+    onError: (error) => {
+      showToast(error instanceof Error ? error.message : 'Nao foi possivel preparar a mensagem deste documento.')
+    },
+  })
+
+  const approveDraftMutation = useMutation({
+    mutationFn: ({ id, draftMessage }: { id: string; draftMessage: string }) =>
+      approveAndSendClientMessage(id, draftMessage),
+    onSuccess: async () => {
+      await refreshPendingMessages()
+      showToast('Mensagem aprovada e enviada ao cliente.')
+    },
+    onError: (error) => {
+      showToast(error instanceof Error ? error.message : 'Nao foi possivel enviar a mensagem aprovada.')
+    },
+  })
+
+  const rejectDraftMutation = useMutation({
+    mutationFn: rejectClientMessage,
+    onSuccess: async () => {
+      await refreshPendingMessages()
+      showToast('Mensagem rejeitada com sucesso.')
+    },
+    onError: () => {
+      showToast('Nao foi possivel rejeitar a mensagem.')
+    },
+  })
+
   useEffect(() => {
-    if (cnj) {
-      listarDiligenciasPorCNJ(cnj).then(setDiligencias)
-    }
+    if (!cnj) return
+    listarDiligenciasPorCNJ(cnj)
+      .then(setDiligencias)
+      .catch(err => { console.error('[ProcessDetail] Erro ao carregar diligências:', err); setDiligencias([]) })
   }, [cnj])
 
   const recarregarDiligencias = useCallback(async () => {
@@ -161,13 +231,15 @@ const ProcessDetail: React.FC = () => {
   const parties = partiesQuery.data ?? []
   const movements = movementsQuery.data ?? []
   const documents = documentsQuery.data ?? []
+  const pendingMessages = pendingMessagesQuery.data ?? []
 
   const refetchAll = useCallback(() => {
     processQuery.refetch()
     partiesQuery.refetch()
     movementsQuery.refetch()
     documentsQuery.refetch()
-  }, [processQuery, partiesQuery, movementsQuery, documentsQuery])
+    pendingMessagesQuery.refetch()
+  }, [processQuery, partiesQuery, movementsQuery, documentsQuery, pendingMessagesQuery])
 
   const cacheTimestamp = useMemo(
     () => processQuery.dataUpdatedAt ? new Date(processQuery.dataUpdatedAt).toISOString() : null,
@@ -178,6 +250,13 @@ const ProcessDetail: React.FC = () => {
     setModalOpen(false)
     navigate('/meus-processos')
   }, [navigate])
+
+  const ensureCadastroForClientMessage = useCallback(() => {
+    if (cadastro) return true
+    showToast('Cadastre o processo no escritorio antes de enviar mensagem ao cliente.')
+    setModalOpen(true)
+    return false
+  }, [cadastro, showToast])
 
   if (loading) return <PageLoading />
 
@@ -273,6 +352,19 @@ const ProcessDetail: React.FC = () => {
         onRefresh={refetchAll}
         ttlMinutes={24 * 60}
       />
+
+      {cadastro && (
+        <ClientMessageApprovalPanel
+          approvals={pendingMessages}
+          loading={pendingMessagesQuery.isLoading}
+          onApprove={async (id, draftMessage) => {
+            await approveDraftMutation.mutateAsync({ id, draftMessage })
+          }}
+          onReject={async (id) => {
+            await rejectDraftMutation.mutateAsync(id)
+          }}
+        />
+      )}
 
       {/* Tabs Section */}
       <Card>
@@ -447,6 +539,30 @@ const ProcessDetail: React.FC = () => {
                         {movement.orgao && (
                           <p className="text-sm text-gray-600 mt-1">Órgão: {movement.orgao}</p>
                         )}
+                        <div className="mt-3">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={createMovementDraftMutation.isPending}
+                            onClick={() => {
+                              if (!ensureCadastroForClientMessage()) return
+                              createMovementDraftMutation.mutate({
+                                cnj: process.cnj,
+                                movement: {
+                                  id: movement.id,
+                                  data: typeof movement.data === 'string'
+                                    ? movement.data
+                                    : movement.data?.toISOString?.(),
+                                  tipo: movement.tipo,
+                                  descricao: movement.descricao,
+                                  orgao: movement.orgao,
+                                },
+                              })
+                            }}
+                          >
+                            {createMovementDraftMutation.isPending ? 'Preparando...' : 'Enviar mensagem ao cliente'}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -468,7 +584,7 @@ const ProcessDetail: React.FC = () => {
                         <th className="text-left py-3 px-4 font-semibold text-gray-900">Título</th>
                         <th className="text-left py-3 px-4 font-semibold text-gray-900">Tipo</th>
                         <th className="text-left py-3 px-4 font-semibold text-gray-900">Data</th>
-                        <th className="text-center py-3 px-4 font-semibold text-gray-900">Ação</th>
+                        <th className="text-center py-3 px-4 font-semibold text-gray-900">Acoes</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -480,15 +596,37 @@ const ProcessDetail: React.FC = () => {
                             {formatDateBR(doc.dataCriacao)}
                           </td>
                           <td className="py-3 px-4 text-center">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() =>
-                                navigate(`/document/${doc.id}`, { state: { cnj } })
-                              }
-                            >
-                              Ler
-                            </Button>
+                            <div className="flex items-center justify-center gap-2">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() =>
+                                  navigate(`/document/${doc.id}`, { state: { cnj } })
+                                }
+                              >
+                                Ler
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={createDocumentDraftMutation.isPending}
+                                onClick={() => {
+                                  if (!ensureCadastroForClientMessage()) return
+                                  createDocumentDraftMutation.mutate({
+                                    cnj: process.cnj,
+                                    document: {
+                                      id: doc.id,
+                                      titulo: doc.titulo,
+                                      tipo: doc.tipo,
+                                      dataCriacao: doc.dataCriacao,
+                                      paginas: doc.paginas,
+                                    },
+                                  })
+                                }}
+                              >
+                                {createDocumentDraftMutation.isPending ? 'Preparando...' : 'Enviar ao cliente'}
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}

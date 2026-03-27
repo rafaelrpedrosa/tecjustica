@@ -14,6 +14,7 @@ import DashboardOperacional from '@/pages/DashboardOperacional'
 import DashboardTempos from '@/pages/DashboardTempos'
 import ChatIA from '@/pages/ChatIA'
 import Clientes from '@/pages/Clientes'
+import Configuracoes from '@/pages/Configuracoes'
 import NotFound from '@/pages/NotFound'
 import Login from '@/pages/Login'
 
@@ -47,6 +48,7 @@ function App() {
                 <Route path="/dashboard-tempos" element={<DashboardTempos />} />
                 <Route path="/ia" element={<ChatIA />} />
                 <Route path="/clientes" element={<Clientes />} />
+                <Route path="/configuracoes" element={<Configuracoes />} />
                 <Route path="*" element={<NotFound />} />
               </Route>
             </Route>

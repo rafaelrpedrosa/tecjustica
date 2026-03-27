@@ -11,7 +11,9 @@ function getLocal(): DiligenciaOperacional[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     return raw ? (JSON.parse(raw) as DiligenciaOperacional[]) : []
-  } catch {
+  } catch (err) {
+    console.warn('[diligencias] localStorage corrompido, limpando dados:', err)
+    localStorage.removeItem(STORAGE_KEY)
     return []
   }
 }
@@ -38,7 +40,8 @@ export async function listarDiligencias(): Promise<DiligenciaOperacional[]> {
     const res = await apiClient.get<DiligenciaOperacional[]>('/api/diligencias')
     await migrateLocalIfNeeded()
     return res.data
-  } catch {
+  } catch (err) {
+    console.warn('[diligencias] API indisponível, usando localStorage:', err)
     return getLocal()
   }
 }
@@ -49,7 +52,8 @@ export async function listarDiligenciasPorCNJ(cnj: string): Promise<DiligenciaOp
       `/api/diligencias/cnj/${encodeURIComponent(cnj)}`
     )
     return res.data
-  } catch {
+  } catch (err) {
+    console.warn('[diligencias] API indisponível para CNJ, usando localStorage:', err)
     return getLocal().filter((d) => d.cnj === cnj)
   }
 }
@@ -60,7 +64,8 @@ export async function salvarDiligencia(
   try {
     const res = await apiClient.post<DiligenciaOperacional>('/api/diligencias', diligencia)
     return res.data
-  } catch {
+  } catch (err) {
+    console.warn('[diligencias] Falha ao salvar via API, persistindo localmente:', err)
     const lista = getLocal()
     lista.push(diligencia)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(lista))
@@ -74,7 +79,8 @@ export async function atualizarDiligencia(
 ): Promise<void> {
   try {
     await apiClient.put(`/api/diligencias/${id}`, updates)
-  } catch {
+  } catch (err) {
+    console.warn('[diligencias] Falha ao atualizar via API, atualizando localmente:', err)
     const lista = getLocal().map((d) => (d.id === id ? { ...d, ...updates } : d))
     localStorage.setItem(STORAGE_KEY, JSON.stringify(lista))
   }
@@ -83,7 +89,8 @@ export async function atualizarDiligencia(
 export async function excluirDiligencia(id: string): Promise<void> {
   try {
     await apiClient.delete(`/api/diligencias/${id}`)
-  } catch {
+  } catch (err) {
+    console.warn('[diligencias] Falha ao excluir via API, removendo localmente:', err)
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(getLocal().filter((d) => d.id !== id))

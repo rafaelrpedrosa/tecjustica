@@ -5,6 +5,7 @@ export interface EscritorioProcesso {
   cnj: string
   clienteNome: string
   clientePolo: 'ATIVO' | 'PASSIVO' | 'TERCEIRO'
+  clienteId?: string
   responsavel?: string
   vara?: string
   monitorar: boolean
@@ -31,6 +32,7 @@ export interface CadastroProcessoInput {
   cnj: string
   clienteNome: string
   clientePolo: 'ATIVO' | 'PASSIVO' | 'TERCEIRO'
+  clienteId?: string
   responsavel?: string
   vara?: string
   monitorar?: boolean
@@ -58,6 +60,17 @@ export interface TipoAcaoMetrica {
   mediaTempoTotal: number | null
 }
 
+export interface FaseMetrica {
+  fase: string
+  totalProcessos: number
+  mediaTempoTotal: number | null
+}
+
+export interface AssuntoMetrica {
+  assunto: string
+  totalProcessos: number
+}
+
 export interface ResumoMetrica {
   totalProcessos: number
   processosComMovimentos: number
@@ -69,5 +82,7 @@ export interface ResumoMetrica {
 export interface MetricasTempo {
   porTribunal: TribunalMetrica[]
   porTipoAcao: TipoAcaoMetrica[]
+  porFase: FaseMetrica[]
+  porAssunto: AssuntoMetrica[]
   resumo: ResumoMetrica
 }

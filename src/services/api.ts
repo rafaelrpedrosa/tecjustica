@@ -10,7 +10,7 @@ const USE_MOCK = env.VITE_USE_MOCK === 'true'
 
 const client: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
     ...(env.VITE_API_SECRET ? { 'X-Api-Key': env.VITE_API_SECRET } : {}),

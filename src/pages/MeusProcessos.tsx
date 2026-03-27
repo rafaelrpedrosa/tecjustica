@@ -5,6 +5,7 @@ import Badge from '@/components/common/Badge'
 import Empty from '@/components/common/Empty'
 import { Spinner } from '@/components/common/Loading'
 import { CadastroProcessoModal } from '@/components/process/CadastroProcessoModal'
+import { VincularClienteModal } from '@/components/process/VincularClienteModal'
 import {
   listarProcessos,
   removerProcesso,
@@ -43,6 +44,8 @@ export default function MeusProcessos() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editando, setEditando] = useState<EscritorioProcesso | undefined>()
   const [monitorando, setMonitorando] = useState<string | null>(null)
+  const [vincularClienteOpen, setVincularClienteOpen] = useState(false)
+  const [processoBuscandoCliente, setProcessoBuscandoCliente] = useState<EscritorioProcesso | undefined>()
   const [toasts, setToasts] = useState<ToastEntry[]>([])
   const toastIdRef = useRef(0)
   const toastTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -103,6 +106,11 @@ export default function MeusProcessos() {
     }
     navigate(`/process/${encodeURIComponent(proc.cnj)}`)
   }, [navigate])
+
+  const handleVincularCliente = useCallback((proc: EscritorioProcesso) => {
+    setProcessoBuscandoCliente(proc)
+    setVincularClienteOpen(true)
+  }, [])
 
   const handleMonitorarTodos = useCallback(async () => {
     setMonitorando('todos')
@@ -285,6 +293,14 @@ export default function MeusProcessos() {
                   <Button
                     variant="ghost"
                     size="sm"
+                    title="Vincular cliente"
+                    onClick={() => handleVincularCliente(proc)}
+                  >
+                    👤
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => { setEditando(proc); setModalOpen(true) }}
                   >
                     ✏️
@@ -303,12 +319,20 @@ export default function MeusProcessos() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modais */}
       <CadastroProcessoModal
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); setEditando(undefined) }}
         onSuccess={() => { carregar(); showToast(editando ? 'Cadastro atualizado.' : 'Processo cadastrado com sucesso!') }}
         editando={editando}
+      />
+
+      <VincularClienteModal
+        isOpen={vincularClienteOpen}
+        cnj={processoBuscandoCliente?.cnj || ''}
+        clienteIdAtual={processoBuscandoCliente?.clienteId}
+        onClose={() => { setVincularClienteOpen(false); setProcessoBuscandoCliente(undefined) }}
+        onSuccess={() => { carregar(); showToast('Cliente vinculado com sucesso!') }}
       />
     </div>
   )
