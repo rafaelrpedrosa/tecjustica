@@ -22,16 +22,29 @@ interface Props {
   editando?: EscritorioProcesso
 }
 
-function flattenPartes(data: any): ParteSimples[] {
+interface MCPParte {
+  nome: string
+  tipo?: string
+  cpf_cnpj?: string
+  cpfCnpj?: string
+}
+
+interface MCPPartesResponse {
+  POLO_ATIVO?: MCPParte[]
+  POLO_PASSIVO?: MCPParte[]
+  POLO_OUTROS?: MCPParte[]
+}
+
+function flattenPartes(data: MCPPartesResponse | null | undefined): ParteSimples[] {
   if (!data) return []
   const result: ParteSimples[] = []
-  ;(data.POLO_ATIVO || []).forEach((p: any, i: number) => {
+  ;(data.POLO_ATIVO || []).forEach((p, i) => {
     result.push({ key: `ativo-${i}`, nome: p.nome, tipo: p.tipo || 'AUTOR', polo: 'ATIVO', cpfCnpj: p.cpf_cnpj || p.cpfCnpj })
   })
-  ;(data.POLO_PASSIVO || []).forEach((p: any, i: number) => {
+  ;(data.POLO_PASSIVO || []).forEach((p, i) => {
     result.push({ key: `passivo-${i}`, nome: p.nome, tipo: p.tipo || 'RÉU', polo: 'PASSIVO', cpfCnpj: p.cpf_cnpj || p.cpfCnpj })
   })
-  ;(data.POLO_OUTROS || []).forEach((p: any, i: number) => {
+  ;(data.POLO_OUTROS || []).forEach((p, i) => {
     result.push({ key: `outros-${i}`, nome: p.nome, tipo: p.tipo || 'TERCEIRO', polo: 'TERCEIRO', cpfCnpj: p.cpf_cnpj || p.cpfCnpj })
   })
   return result

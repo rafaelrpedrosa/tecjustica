@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Idioma
+
+Sempre responda em **português do Brasil**, independentemente do idioma usado pelo usuário.
+
 ## Project Overview
 
 **RPAtec** is a React/TypeScript frontend for querying Brazilian judicial processes via the TecJustica MCP server, with a Node.js backend as proxy and Supabase for caching. The system has two runtime processes: the Vite frontend (port 5173) and the Express backend (port 3001).
@@ -53,16 +57,7 @@ Component → Hook (React Query) → Service → [Memory Cache] → Backend REST
 1. **Memory cache** (`src/services/cache.ts`) — in-process Map, lost on page refresh, checked first
 2. **Supabase** — persistent, TTL tracked in `cache_metadata` table
 
-Services in `src/services/process.service.ts`, `document.service.ts`, `precedent.service.ts` all follow this pattern:
-```ts
-const cached = getCache<T>(cacheKey)
-if (cached) return cached
-const data = await mcpService.callXxx(...)
-setCache(cacheKey, data, ttl)
-await updateCacheMetadata(type, id, ttl)
-await saveToSupabase(data)
-return data
-```
+Services MCP (`process.service.ts`, `document.service.ts`, `precedent.service.ts`) seguem o padrão: check memória → fetch MCP → setCache → updateCacheMetadata → saveToSupabase.
 
 `escritorio.service.ts` does **not** use the cache layer — escritório data is mutable user data, not MCP cache.
 
@@ -79,7 +74,32 @@ Key backend responsibilities:
 - Proxies PDF downloads through `/api/documento-pdf/:cnj/:docId`
 - Writes audit logs to Supabase `audit_logs` table (fire-and-forget)
 
-MCP session management: a new `Client` is created per tool call (`callMCPTool()`), with exponential backoff retry (3 attempts). The client connects, calls one tool, then is abandoned (no connection pooling by design).
+MCP: novo `Client` por chamada em `callMCPTool()`, sem connection pooling por design.
+
+### Clientes Feature
+
+- `src/pages/Clientes.tsx` — lista e CRUD de clientes
+- `src/services/cliente.service.ts` — REST via `apiClient` em `/api/clientes/*`
+- `src/types/` — tipos de cliente
+- Supabase table: `clientes` (migration: `004_clientes.sql`)
+
+### Financeiro Feature (Asaas)
+
+- `src/pages/Financeiro.tsx` — cobranças e gateway
+- `src/services/financeiro.service.ts` — REST via `apiClient` em `/api/financeiro/*`
+- `src/types/financeiro.ts` — interfaces
+- Supabase table: financeiro (migration: `009_financeiro_asaas.sql`)
+- Fluxo: cliente sincronizado no Asaas → cobranças criadas/sincronizadas via `/api/financeiro/cobrancas`
+
+### IA Feature
+
+- `src/pages/ChatIA.tsx` — interface de chat
+- `src/services/ia.service.ts` — REST via `apiClient` em `/api/ia/chat` e `/api/ia/status`
+- Tokens de IA (Anthropic/OpenAI/Gemini) armazenados via `settings.service.ts` (ver abaixo)
+
+### Settings — Tokens de IA
+
+`src/services/settings.service.ts` — persiste tokens de provedores de IA no Supabase via `apiClient` (`/api/settings`). Funções: `getTokens()`, `saveTokens(AppSettings)`, `getToken(key)`, `deleteToken(key)`. Tokens nunca ficam em `.env` do frontend — são gerenciados em runtime pelo usuário na página `/configuracoes`.
 
 ### Escritório Feature
 
@@ -104,11 +124,11 @@ Monitoring logic (backend): `POST /api/escritorio/monitorar/:cnj` fetches curren
 
 **Project**: `https://jtvojfqjtwfwcvqocadk.supabase.co`
 
-Tables: `processes`, `process_parties`, `process_lawyers`, `process_movements`, `process_documents`, `precedents_cache`, `cache_metadata`, `audit_logs`, `escritorio_processos`, `escritorio_alertas`.
+Tables: `processes`, `process_parties`, `process_lawyers`, `process_movements`, `process_documents`, `precedents_cache`, `cache_metadata`, `audit_logs`, `escritorio_processos`, `escritorio_alertas`, `diligencias`, `clientes`, `settings`, `financeiro` (Asaas).
 
 When creating new tables, always run `GRANT SELECT, INSERT, UPDATE, DELETE ON <table> TO anon, authenticated, service_role` after the migration — Supabase does not grant DML to these roles automatically for tables created via migrations.
 
-Migrations: `supabase/migrations/001_init.sql`, `supabase/migrations/002_escritorio.sql`.
+Migrations em `supabase/migrations/` (verificar com `ls` antes de criar nova). Próxima: `010_`. Atenção: há múltiplos `003_*.sql` — numeração irregular.
 
 ## Environment Variables
 
@@ -134,6 +154,12 @@ TECJUSTICA_AUTH_TOKEN=<bearer token>          # backend exits if missing
 | `/meus-processos` | `MeusProcessos.tsx` |
 | `/diligencias` | `FilaDiligencias.tsx` — fila operacional, filtros, ações por linha |
 | `/dashboard-operacional` | `DashboardOperacional.tsx` — 6 cards métricas + próximos 7 dias + top-5 urgentes |
+| `/dashboard-tempos` | `DashboardTempos.tsx` — análise de tempos processuais |
+| `/ia` | `ChatIA.tsx` — interface de chat com IA |
+| `/clientes` | `Clientes.tsx` — cadastro e gestão de clientes |
+| `/financeiro` | `Financeiro.tsx` — módulo financeiro (integração Asaas) |
+| `/comunicacao` | `Comunicacao.tsx` — aprovação de mensagens para clientes |
+| `/configuracoes` | `Configuracoes.tsx` — configurações da aplicação |
 | `/login` | `Login.tsx` — formulário e-mail/senha, redireciona para `/` se já autenticado |
 
 `DocumentViewer` requires `cnj` passed via React Router `state` (set in `ProcessDetail` when clicking "Ler"). Without it, the viewer shows an error state.
@@ -178,14 +204,8 @@ Para modais com muitos campos que podem transbordar a tela: adicionar `max-h-[90
 
 ### Motor de Gargalos
 
-`src/utils/analisarGargalo.ts` — função principal com 7 regras heurísticas por texto de movimentação.
-Helpers puros em `src/utils/processRules.ts`: `norm`, `findFirst`, `houveImpulsoApos`, `diasDesde`.
-Cenários de teste em `src/utils/gargaloMocks.ts` (usar no console: `import { mockConcluso } from '@/utils/gargaloMocks'`).
-
-**Convenção de array**: `movements[0]` = mais recente. `findFirst` retorna o índice mais baixo (match mais recente).
-`houveImpulsoApos(movements, idx, patterns)` verifica índices `0..idx-1` (anteriores no tempo = mais recentes que o marco).
-
-**Tipos**: `PrioridadeGargalo` é `'URGENTE' | 'ALTA' | 'NORMAL' | 'MONITORAR'` (não mais `alta/media/baixa`).
+`src/utils/analisarGargalo.ts` — 7 regras heurísticas. Helpers em `processRules.ts`. Mocks em `gargaloMocks.ts`.
+**Convenção**: `movements[0]` = mais recente. `PrioridadeGargalo`: `'URGENTE' | 'ALTA' | 'NORMAL' | 'MONITORAR'`.
 
 ### Diligências
 
@@ -216,22 +236,65 @@ Exemplo: `new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })`
 
 ### ProcessMovement.data — Tipo `string | Date`
 
-`ProcessMovement.data` é `string | Date`. Antes de passar para funções que esperam `string`, usar:
-```ts
-function toStr(d: string | Date): string { return typeof d === 'string' ? d : d.toISOString() }
-```
+`ProcessMovement.data` é `string | Date` — converter com `typeof d === 'string' ? d : d.toISOString()` antes de usar como string.
 
 ### Backend — Nunca Expor error.message ao Cliente
 
-Padrão obrigatório para erros Supabase/internos no backend:
-```js
-if (error) {
-  console.error('Contexto da rota:', error.message)
-  return res.status(500).json({ error: 'Erro interno ao processar operação.' })
-}
-```
-Nunca retornar `error.message` diretamente na resposta — expõe detalhes internos.
+Nunca retornar `error.message` ao cliente — usar `console.error()` internamente e responder com mensagem genérica.
+
+### Migrations — Numeração Irregular
+
+Há múltiplos arquivos `003_*.sql` (lawyers_unique, rls_restrict_writes, diligencias). A próxima migration deve usar `010_` — não confiar na numeração para inferir ordem, verificar sempre `ls supabase/migrations/` antes de criar nova.
+
+### Hooks e Scripts Bash — Sem `jq`
+
+`jq` não está instalado neste ambiente Windows. Para parsear JSON em hooks ou scripts bash, usar `python -c "import sys,json; d=json.load(sys.stdin); ..."`.
+
+## Fluxo Git — Nunca Enviar para Main sem Aprovação
+
+Todo código novo ou alterado deve passar por uma branch de teste antes de ir para o `main`:
+
+1. **Trabalhar sempre em branch** — nunca commitar direto no `main`
+2. **Branch de teste**: usar o padrão `feat/`, `fix/` ou `chore/` conforme o tipo
+3. **Nunca fazer push para `main`** sem o usuário dizer explicitamente "pode enviar para o main"
+4. Quando o trabalho estiver pronto, **avisar o usuário** com o resumo do que foi feito e aguardar aprovação
+5. Só após aprovação explícita: fazer merge ou PR para `main`
+
+Se o usuário pedir uma mudança e não especificar branch, criar uma branch nova com nome descritivo e informar qual foi criada.
+
+## Perfil do Usuário
+
+O usuário **não é desenvolvedor**. Antes de pedir qualquer instalação, configuração de ferramenta, MCP, CLI, API ou aplicativo:
+
+1. **Pesquise na web** o procedimento de instalação atual para Windows
+2. **Forneça o passo a passo completo** — comando exato, onde executar, o que esperar
+3. **Nunca assuma** que o usuário sabe o que é um terminal, onde colar um comando, ou o que uma mensagem de erro significa
+4. Se houver múltiplas formas de instalar, **escolha a mais simples** e explique qual escolheu e por quê
+
+Isso vale para: npm packages, MCPs, CLIs (gh, jq, etc.), extensões VS Code, configurações de sistema, variáveis de ambiente, e qualquer outra dependência.
+
+## Arquitetura de Agentes
+
+O projeto usa um padrão de agentes nativos do Claude Code com orquestrador central:
+
+**Orquestrador** — planeja a tarefa, delega para os subagentes em paralelo, consolida os resultados e apresenta um resumo ao usuário para revisão e integração. Nunca entrega código diretamente — sempre passa pelo usuário antes de integrar.
+
+**Subagentes disponíveis:**
+
+| Agente | Arquivo | Responsabilidade |
+|--------|---------|-----------------|
+| `backend` | `.claude/agents/backend.md` | Rotas Express, serviços, migrations Supabase |
+| `frontend` | `.claude/agents/frontend.md` | Componentes React, hooks, páginas, Tailwind |
+| `testes` | `.claude/agents/testes.md` | Testes unitários e de integração |
+| `security-reviewer` | `.claude/agents/security-reviewer.md` | Auditoria de erros, segurança, RLS, tokens |
+
+**Fluxo padrão:**
+1. Usuário descreve a feature para o orquestrador
+2. Orquestrador planeja e dispara subagentes em paralelo
+3. Subagentes executam e reportam ao orquestrador
+4. Orquestrador consolida e apresenta resumo ao usuário
+5. Usuário revisa e integra
 
 ---
 
-**Last Updated**: 2026-03-25 (sessão: diligências API+Supabase, auth Supabase, CSV export, badge urgentes nav, semana à frente dashboard)
+**Last Updated**: 2026-03-28 (sessão: Claude Code automations — hooks tsc+env, context7 MCP, skill nova-rota-backend, subagent security-reviewer)
