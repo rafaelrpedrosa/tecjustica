@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import Button from '@/components/common/Button'
-import { atualizarProcesso, verificarCadastro } from '@/services/escritorio.service'
+import { atualizarProcesso } from '@/services/escritorio.service'
 import type { FaseProcessual, EscritorioProcesso } from '@/types/escritorio'
 
 interface Props {
