@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from 'react'
+import { useToast } from '@/hooks/useToast'
 import { useNavigate } from 'react-router-dom'
 import Button from '@/components/common/Button'
 import Badge from '@/components/common/Badge'
@@ -18,7 +19,6 @@ import {
 import { parseCsv, readFileText, normalizeHeader, normalizeBoolean } from '@/utils/csv'
 import type { EscritorioProcesso, FaseProcessual } from '@/types/escritorio'
 
-interface ToastEntry { id: number; msg: string }
 
 const POLO_LABELS: Record<string, string> = {
   ATIVO: 'Ativo',
@@ -83,11 +83,9 @@ export default function MeusProcessos() {
   const [monitorando, setMonitorando] = useState<string | null>(null)
   const [vincularClienteOpen, setVincularClienteOpen] = useState(false)
   const [processoBuscandoCliente, setProcessoBuscandoCliente] = useState<EscritorioProcesso | undefined>()
-  const [toasts, setToasts] = useState<ToastEntry[]>([])
   const [importando, setImportando] = useState(false)
-  const toastIdRef = useRef(0)
-  const toastTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const { toasts, showToast } = useToast()
 
   const carregar = useCallback(async () => {
     try {
@@ -103,14 +101,6 @@ export default function MeusProcessos() {
   }, [])
 
   useEffect(() => { carregar() }, [carregar])
-  useEffect(() => () => { toastTimersRef.current.forEach(clearTimeout) }, [])
-
-  const showToast = useCallback((msg: string) => {
-    const id = ++toastIdRef.current
-    setToasts(prev => [...prev, { id, msg }])
-    const timer = setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
-    toastTimersRef.current.push(timer)
-  }, [])
 
   const handleRemover = useCallback(async (cnj: string, clienteNome: string) => {
     if (!confirm(`Remover "${clienteNome}" (${cnj}) do cadastro do escritório?`)) return
@@ -257,7 +247,7 @@ export default function MeusProcessos() {
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
         {toasts.map(t => (
           <div key={t.id} className="max-w-sm rounded-lg bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
-            {t.msg}
+            {t.message}
           </div>
         ))}
       </div>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import Card, { CardContent } from '@/components/common/Card'
@@ -19,6 +19,7 @@ import {
   useProcessParties,
 } from '@/hooks/useProcess'
 import { useGargaloProcessual } from '@/hooks/useGargaloProcessual'
+import { useToast } from '@/hooks/useToast'
 import { listarDiligenciasPorCNJ, salvarDiligencia } from '@/services/diligencia.service'
 import { verificarCadastro, monitorarProcesso } from '@/services/escritorio.service'
 import {
@@ -75,10 +76,9 @@ const ProcessDetail: React.FC = () => {
   const [cadastro, setCadastro] = useState<EscritorioProcesso | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [monitorando, setMonitorando] = useState(false)
-  const [toastMsg, setToastMsg] = useState<string | null>(null)
   const [diligencias, setDiligencias] = useState<DiligenciaOperacional[]>([])
   const [retornoModal, setRetornoModal] = useState<DiligenciaOperacional | null>(null)
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { toasts, showToast } = useToast()
 
   useEffect(() => {
     if (!cnj) return
@@ -88,18 +88,6 @@ const ProcessDetail: React.FC = () => {
       .catch(() => { if (isMounted) setCadastro(null) })
     return () => { isMounted = false }
   }, [cnj])
-
-  useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    }
-  }, [])
-
-  const showToast = useCallback((msg: string) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-    setToastMsg(msg)
-    toastTimerRef.current = setTimeout(() => setToastMsg(null), 4000)
-  }, [])
 
   const processQuery = useProcess(cnj)
   const partiesQuery = useProcessParties(cnj)
@@ -300,11 +288,13 @@ const ProcessDetail: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {toastMsg && (
-        <div className="fixed right-4 top-4 z-50 max-w-sm rounded-lg bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
-          {toastMsg}
-        </div>
-      )}
+      <div className="fixed right-4 top-4 z-50 flex flex-col gap-2">
+        {toasts.map(t => (
+          <div key={t.id} className="max-w-sm rounded-lg bg-gray-900 px-4 py-3 text-sm text-white shadow-lg">
+            {t.message}
+          </div>
+        ))}
+      </div>
 
       <Card className="border-l-4 border-l-blue-600 shadow-lg">
         <CardContent className="py-8">
