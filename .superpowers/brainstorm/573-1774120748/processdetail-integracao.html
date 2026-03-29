@@ -1,0 +1,68 @@
+<h2>Integração no ProcessDetail</h2>
+<p class="subtitle">Onde ficam o botão "Gerar Diligência" e a seção de diligências do processo?</p>
+
+<div class="options">
+  <div class="option" data-choice="card-separado" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Card separado abaixo do Gargalo</h3>
+      <p>Botão "Gerar Diligência" dentro do card de gargalo. Seção "Diligências" aparece como card independente logo abaixo, na aba Visão Geral.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">Aba Visão Geral</div>
+        <div class="mockup-body" style="display:flex;flex-direction:column;gap:8px;padding:10px">
+          <div style="background:#f1f5f9;border-radius:6px;padding:8px;font-size:10px;color:#6b7280;text-align:center">[ grid: Tribunal · Classe · Status · Aberto em · Última mov. ]</div>
+          <div style="border-left:4px solid #dc2626;background:#fef2f2;padding:10px;border-radius:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <div style="font-size:11px;font-weight:600;color:#dc2626">⚠️ Gargalo detectado — 47 dias</div>
+                <div style="font-size:10px;color:#6b7280;margin-top:2px">Concluso sem despacho · Ligar para cartório</div>
+              </div>
+              <button style="font-size:10px;padding:4px 10px;background:#3b82f6;color:white;border:none;border-radius:4px">+ Gerar Diligência</button>
+            </div>
+          </div>
+          <div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px">
+            <div style="font-size:11px;font-weight:600;margin-bottom:6px">📋 Diligências deste processo</div>
+            <div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:6px 8px;border-radius:4px;font-size:10px">
+              <div style="display:flex;justify-content:space-between">
+                <span style="font-weight:600">📞 Lig. Secretaria</span>
+                <span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:8px">EM ANDAMENTO</span>
+              </div>
+              <div style="color:#6b7280;margin-top:2px;font-style:italic">"Informaram que está no gabinete"</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="tab-nova" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Nova aba "Diligências"</h3>
+      <p>Botão "Gerar Diligência" no header do processo. Diligências ficam em aba própria, junto com Visão Geral, Partes, Movimentos, Documentos.</p>
+      <div class="mockup" style="margin-top:10px">
+        <div class="mockup-header">ProcessDetail</div>
+        <div class="mockup-body" style="padding:10px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#f8fafc;border-radius:4px">
+            <div style="font-size:11px;font-weight:600">0001234-56.2024.8.26.0001</div>
+            <button style="font-size:10px;padding:4px 10px;background:#3b82f6;color:white;border:none;border-radius:4px">+ Gerar Diligência</button>
+          </div>
+          <div style="display:flex;gap:0;border-bottom:2px solid #e2e8f0">
+            <div style="font-size:10px;padding:6px 10px;color:#6b7280">Visão Geral</div>
+            <div style="font-size:10px;padding:6px 10px;color:#6b7280">Partes</div>
+            <div style="font-size:10px;padding:6px 10px;color:#6b7280">Movimentos</div>
+            <div style="font-size:10px;padding:6px 10px;color:#6b7280">Documentos</div>
+            <div style="font-size:10px;padding:6px 10px;color:#2563eb;border-bottom:2px solid #2563eb;font-weight:600">Diligências <span style="background:#dc2626;color:white;border-radius:8px;padding:0 5px;font-size:9px">1</span></div>
+          </div>
+          <div style="background:#fffbeb;border-left:3px solid #f59e0b;padding:8px;border-radius:4px;font-size:10px">
+            <div style="display:flex;justify-content:space-between">
+              <span style="font-weight:600">📞 Lig. Secretaria · ALTA</span>
+              <span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:8px">EM ANDAMENTO</span>
+            </div>
+            <div style="color:#6b7280;margin-top:2px;font-style:italic">"Informaram que está no gabinete"</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -8,6 +8,7 @@ import Empty from '@/components/common/Empty'
 import { CacheTimestamp } from '@/components/common/CacheTimestamp'
 import type { Document } from '@/types/document'
 import { readDocument, getDocumentURL } from '@/services/document.service'
+import { supabase } from '@/services/supabase'
 
 // ─── Formatador de texto judicial ────────────────────────────────────────────
 
@@ -287,7 +288,10 @@ const DocumentViewer: React.FC = () => {
 
   const handleOpenPDF = async () => {
     if (!cnj || !documentId) return
-    const proxyUrl = `${import.meta.env.VITE_API_BASE_URL}/api/documento-pdf/${encodeURIComponent(cnj)}/${encodeURIComponent(documentId)}`
+    const session = await supabase?.auth.getSession()
+    const accessToken = session?.data?.session?.access_token
+    const tokenQuery = accessToken ? `?access_token=${encodeURIComponent(accessToken)}` : ''
+    const proxyUrl = `${import.meta.env.VITE_API_BASE_URL}/api/documento-pdf/${encodeURIComponent(cnj)}/${encodeURIComponent(documentId)}${tokenQuery}`
 
     // Verifica disponibilidade antes de abrir
     try {

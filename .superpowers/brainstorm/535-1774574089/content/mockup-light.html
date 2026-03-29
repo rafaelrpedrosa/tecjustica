@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JusFlow — Light Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Geist', -apple-system, sans-serif;
+    background: #e8edf2;
+    color: #1e293b;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px;
+    gap: 20px;
+  }
+
+  .page-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #94a3b8;
+    text-align: center;
+  }
+  .title { font-size: 18px; font-weight: 600; color: #1e293b; text-align: center; }
+  .subtitle-text { font-size: 12px; color: #94a3b8; text-align: center; }
+
+  /* App shell */
+  .app {
+    display: flex;
+    width: 100%;
+    max-width: 960px;
+    height: 560px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #dde3ea;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.05);
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 216px;
+    flex-shrink: 0;
+    background: #fff;
+    border-right: 1px solid #e8edf2;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-logo {
+    padding: 16px 14px 14px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .logo-mark {
+    width: 26px;
+    height: 26px;
+    background: #1e3a5f;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+  }
+
+  .logo-text { font-size: 13px; font-weight: 600; color: #1e293b; }
+  .logo-sub { font-size: 10px; color: #94a3b8; }
+
+  .sidebar-nav {
+    flex: 1;
+    padding: 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    overflow-y: auto;
+  }
+
+  .nav-section-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #cbd5e1;
+    padding: 10px 8px 4px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #64748b;
+    cursor: pointer;
+    font-weight: 400;
+  }
+
+  .nav-item:hover { background: #f8fafc; color: #334155; }
+
+  .nav-item.active {
+    background: #f0f4f8;
+    color: #1e3a5f;
+    font-weight: 500;
+  }
+
+  .nav-item .icon {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    color: inherit;
+    opacity: 0.7;
+  }
+  .nav-item.active .icon { opacity: 1; }
+
+  .nav-badge {
+    margin-left: auto;
+    background: #fee2e2;
+    color: #dc2626;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+  }
+
+  .sidebar-footer {
+    padding: 8px;
+    border-top: 1px solid #f1f5f9;
+  }
+
+  .user-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .user-row:hover { background: #f8fafc; }
+
+  .avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #e2e8f0;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: #475569;
+  }
+
+  .user-name { font-size: 12px; font-weight: 500; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .user-role { font-size: 10px; color: #94a3b8; }
+
+  /* Main */
+  .main {
+    flex: 1;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .topbar {
+    padding: 12px 20px;
+    border-bottom: 1px solid #e8edf2;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .topbar-title { font-size: 14px; font-weight: 600; color: #1e293b; }
+  .topbar-sep { color: #cbd5e1; font-size: 13px; }
+  .topbar-crumb { font-size: 12px; color: #94a3b8; }
+  .topbar-actions { margin-left: auto; display: flex; gap: 8px; }
+
+  .btn-ghost {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .btn-primary {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #fff;
+    background: #1e3a5f;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  /* Content */
+  .content {
+    flex: 1;
+    padding: 18px 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .search-card {
+    background: #fff;
+    border: 1px solid #e8edf2;
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+
+  .search-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-bottom: 10px;
+  }
+
+  .search-row { display: flex; gap: 8px; }
+
+  .search-input {
+    flex: 1;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #334155;
+    font-family: 'Geist', monospace;
+    outline: none;
+  }
+
+  .search-input:focus { border-color: #1e3a5f; }
+
+  /* Stats */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+  }
+
+  .stat-card {
+    background: #fff;
+    border: 1px solid #e8edf2;
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+
+  .stat-label { font-size: 10px; color: #94a3b8; font-weight: 500; margin-bottom: 6px; }
+  .stat-value { font-size: 22px; font-weight: 600; color: #1e293b; line-height: 1; margin-bottom: 4px; }
+  .stat-sub { font-size: 10px; color: #cbd5e1; }
+  .stat-value.alert { color: #dc2626; }
+  .stat-value.success { color: #16a34a; }
+
+  /* Table */
+  .table-card {
+    background: #fff;
+    border: 1px solid #e8edf2;
+    border-radius: 8px;
+    overflow: hidden;
+    flex: 1;
+  }
+
+  .table-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .table-title { font-size: 12px; font-weight: 600; color: #334155; }
+  .table-count { font-size: 10px; color: #94a3b8; background: #f1f5f9; padding: 2px 7px; border-radius: 10px; }
+
+  .table-row {
+    display: flex;
+    align-items: center;
+    padding: 9px 16px;
+    border-bottom: 1px solid #f8fafc;
+    gap: 12px;
+    font-size: 12px;
+  }
+
+  .table-row:last-child { border-bottom: none; }
+  .table-row:hover { background: #f8fafc; }
+
+  .process-num { color: #1e3a5f; font-size: 11px; font-weight: 500; width: 155px; flex-shrink: 0; font-family: 'Geist', monospace; }
+  .process-name { color: #475569; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .process-date { color: #cbd5e1; font-size: 11px; width: 60px; flex-shrink: 0; text-align: right; }
+
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .dot-green { background: #86efac; }
+  .dot-yellow { background: #fcd34d; }
+  .dot-red { background: #fca5a5; }
+</style>
+</head>
+<body>
+
+<div class="page-label">Mockup v2 — Light Mode</div>
+<div class="title">JusFlow — Sidebar + Fundo Claro</div>
+<div class="subtitle-text">Sidebar branca, fundo #f8fafc, cores sobrias em navy escuro</div>
+
+<div class="app">
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">J</div>
+      <div>
+        <div class="logo-text">JusFlow</div>
+        <div class="logo-sub">Sistema Jurídico</div>
+      </div>
+    </div>
+
+    <div class="sidebar-nav">
+      <div class="nav-section-label">Consulta</div>
+      <div class="nav-item active">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="m11 11 2.5 2.5"/></svg>
+        Buscar Processo
+      </div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a4 4 0 1 0 0 8A4 4 0 0 0 8 2zM2 14c0-2.5 2.7-4 6-4s6 1.5 6 4"/></svg>
+        Buscar por CPF
+      </div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M5 8h6M5 5.5h6M5 10.5h4"/></svg>
+        Precedentes
+      </div>
+
+      <div class="nav-section-label">Gestão</div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12V4l6-2 6 2v8l-6 2-6-2z"/></svg>
+        Meus Processos
+        <span class="nav-badge">3</span>
+      </div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+        Diligências
+        <span class="nav-badge">1</span>
+      </div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a4 4 0 1 0 0 8A4 4 0 0 0 8 2zM2 14c0-2.5 2.7-4 6-4s6 1.5 6 4"/></svg>
+        Clientes
+      </div>
+
+      <div class="nav-section-label">Analytics</div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12l4-4 3 3 5-6"/></svg>
+        Dashboard
+      </div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="9" width="2" height="4" rx="0.5"/><rect x="7" y="6" width="2" height="7" rx="0.5"/><rect x="11" y="3" width="2" height="10" rx="0.5"/></svg>
+        Tempos
+      </div>
+      <div class="nav-item">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"/><path d="M6 8s.5-1.5 2-1.5S10 8 10 8s-.5 1.5-2 1.5S6 8 6 8z"/></svg>
+        Assistente IA
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="user-row">
+        <div class="avatar">RF</div>
+        <div>
+          <div class="user-name">rafael@escritorio.com</div>
+          <div class="user-role">Administrador</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <span class="topbar-title">Buscar Processo</span>
+      <span class="topbar-sep">/</span>
+      <span class="topbar-crumb">CNJ</span>
+      <div class="topbar-actions">
+        <button class="btn-ghost">Exportar</button>
+        <button class="btn-primary">+ Novo</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="search-card">
+        <div class="search-label">Número CNJ</div>
+        <div class="search-row">
+          <input class="search-input" value="0000061-33.2026.5.06.0008" readonly>
+          <button class="btn-primary" style="padding:8px 16px;">Buscar</button>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">Total de Processos</div>
+          <div class="stat-value">142</div>
+          <div class="stat-sub">+4 este mês</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Alertas Ativos</div>
+          <div class="stat-value alert">3</div>
+          <div class="stat-sub">Requer atenção</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Diligências</div>
+          <div class="stat-value">1</div>
+          <div class="stat-sub">Urgente</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Resolvidos</div>
+          <div class="stat-value success">87</div>
+          <div class="stat-sub">Este trimestre</div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">Processos Recentes</div>
+          <div class="table-count">142</div>
+        </div>
+        <div class="table-row">
+          <div class="status-dot dot-red"></div>
+          <div class="process-num">0000061-33.2026.5.06</div>
+          <div class="process-name">João Silva vs. Empresa ABC Ltda</div>
+          <div class="process-date">há 1h</div>
+        </div>
+        <div class="table-row">
+          <div class="status-dot dot-yellow"></div>
+          <div class="process-num">0001234-11.2025.8.06</div>
+          <div class="process-name">Maria Santos — Indenização por danos morais</div>
+          <div class="process-date">há 3h</div>
+        </div>
+        <div class="table-row">
+          <div class="status-dot dot-green"></div>
+          <div class="process-num">0005678-44.2024.5.06</div>
+          <div class="process-name">Pedro Costa vs. Banco Central</div>
+          <div class="process-date">há 1d</div>
+        </div>
+        <div class="table-row">
+          <div class="status-dot dot-green"></div>
+          <div class="process-num">0009012-22.2024.8.06</div>
+          <div class="process-name">Ana Lima — Execução fiscal</div>
+          <div class="process-date">há 2d</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

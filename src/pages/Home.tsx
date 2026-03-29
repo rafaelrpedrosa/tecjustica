@@ -1,12 +1,11 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Card, { CardContent, CardHeader } from '@/components/common/Card'
+import Card, { CardContent } from '@/components/common/Card'
 import Button from '@/components/common/Button'
 import { ErrorAlert } from '@/components/common/ErrorAlert'
 
 const CNJ_REGEX = /^\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/
 
-/** Aplica a máscara NNNNNNN-DD.AAAA.J.TR.OOOO nos dígitos fornecidos */
 function formatCNJ(raw: string): string {
   const digits = raw.replace(/\D/g, '').slice(0, 20)
   let result = ''
@@ -35,12 +34,12 @@ const Home: React.FC = () => {
     setError('')
 
     if (!cnj.trim()) {
-      setError('Digite um número CNJ válido')
+      setError('Digite um numero CNJ valido')
       return
     }
 
     if (!validateCNJ(cnj)) {
-      setError('Formato CNJ inválido. Use: NNNNNNN-DD.AAAA.J.TR.OOOO')
+      setError('Formato CNJ invalido. Use: NNNNNNN-DD.AAAA.J.TR.OOOO')
       return
     }
 
@@ -48,100 +47,85 @@ const Home: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Seção de Busca */}
-      <Card>
-        <CardHeader>
-          <h2 className="text-xl font-bold text-gray-900">Buscar Processo</h2>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSearch} className="space-y-4">
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">JusFlow</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Pesquisa processual, operacao do escritorio e acompanhamento inteligente em um so lugar.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card><CardContent className="py-5 text-center"><p className="text-3xl font-bold text-blue-700">CNJ</p><p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Busca direta</p></CardContent></Card>
+        <Card><CardContent className="py-5 text-center"><p className="text-3xl font-bold text-cyan-700">CPF</p><p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Partes</p></CardContent></Card>
+        <Card><CardContent className="py-5 text-center"><p className="text-3xl font-bold text-green-700">Docs</p><p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Processuais</p></CardContent></Card>
+        <Card><CardContent className="py-5 text-center"><p className="text-3xl font-bold text-amber-700">IA</p><p className="text-xs text-gray-500 uppercase tracking-wide mt-2">Apoio juridico</p></CardContent></Card>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <Card className="xl:col-span-2">
+          <CardContent className="space-y-4">
             <div>
-              <label htmlFor="cnj" className="block text-sm font-medium text-gray-700 mb-2">
-                Número CNJ
-              </label>
-              <input
-                id="cnj"
-                type="text"
-                value={cnj}
-                onChange={(e) => setCnj(formatCNJ(e.target.value))}
-                placeholder="Ex: 0000061-33.2026.5.06.0008"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Formato: NNNNNNN-DD.AAAA.J.TR.OOOO
-              </p>
+              <h2 className="text-lg font-semibold text-gray-900">Buscar processo</h2>
+              <p className="text-sm text-gray-500 mt-1">Pesquise um processo pelo numero CNJ completo.</p>
             </div>
-
-            <ErrorAlert message={error} />
-
-            <div className="flex gap-3">
-              <Button
-                type="submit"
-                className="flex items-center gap-2"
-              >
-                🔍 Buscar Processo
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Seção de Atalhos */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardContent className="text-center py-8">
-            <div className="text-4xl mb-4">👤</div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Buscar por CPF/CNPJ</h3>
-            <p className="text-gray-600 text-sm mb-4">
-              Encontre todos os processos de uma pessoa ou empresa
-            </p>
-            <Button
-              variant="secondary"
-              onClick={() => navigate('/search-cpf')}
-              className="w-full"
-            >
-              Buscar por CPF/CNPJ
-            </Button>
+            <form onSubmit={handleSearch} className="space-y-4">
+              <div>
+                <label htmlFor="cnj" className="block text-sm font-medium text-gray-700 mb-2">
+                  Numero CNJ
+                </label>
+                <input
+                  id="cnj"
+                  type="text"
+                  value={cnj}
+                  onChange={(e) => setCnj(formatCNJ(e.target.value))}
+                  placeholder="Ex: 0000061-33.2026.5.06.0008"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Formato: NNNNNNN-DD.AAAA.J.TR.OOOO</p>
+              </div>
+              <ErrorAlert message={error} />
+              <Button type="submit">Buscar processo</Button>
+            </form>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="text-center py-8">
-            <div className="text-4xl mb-4">⚖️</div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Buscar Precedentes</h3>
-            <p className="text-gray-600 text-sm mb-4">
-              Pesquise jurisprudência e precedentes do TJCE
-            </p>
-            <Button
-              variant="secondary"
-              onClick={() => navigate('/precedents')}
-              className="w-full"
-            >
-              Buscar Precedentes
+          <CardContent className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Atalhos</h2>
+              <p className="text-sm text-gray-500 mt-1">Acesse rapidamente os fluxos mais usados.</p>
+            </div>
+            <Button variant="secondary" onClick={() => navigate('/search-cpf')} className="w-full justify-start">
+              Buscar por CPF/CNPJ
+            </Button>
+            <Button variant="secondary" onClick={() => navigate('/precedents')} className="w-full justify-start">
+              Buscar precedentes
+            </Button>
+            <Button variant="secondary" onClick={() => navigate('/meus-processos')} className="w-full justify-start">
+              Ver meus processos
+            </Button>
+            <Button variant="secondary" onClick={() => navigate('/financeiro')} className="w-full justify-start">
+              Abrir financeiro
             </Button>
           </CardContent>
         </Card>
       </div>
 
-      {/* Seção de Informações */}
       <Card>
-        <CardContent className="py-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Sobre o JusFlow</h3>
-          <div className="text-gray-600 text-sm space-y-2">
-            <div>
-              JusFlow é um sistema integrado para consulta e análise de processos judiciais brasileiros,
-              utilizando dados do Banco Nacional de Processos (PDPJ) do CNJ.
+        <CardContent className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Sobre o sistema</h2>
+            <p className="text-sm text-gray-500 mt-1">Base processual, gestao operacional e comunicacao com cliente em uma interface unica.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              Busca de processos por CNJ, CPF/CNPJ, documentos e precedentes juridicos.
             </div>
-            <div className="mt-4">
-              <strong>Funcionalidades:</strong>
-              <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>Busca de processos por número CNJ</li>
-                <li>Pesquisa por CPF/CNPJ das partes</li>
-                <li>Acesso a movimentações processuais</li>
-                <li>Visualização de documentos</li>
-                <li>Busca de precedentes jurídicos</li>
-              </ul>
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              Operacao do escritorio com monitoramento, diligencias, clientes, dashboards e financeiro.
             </div>
           </div>
         </CardContent>

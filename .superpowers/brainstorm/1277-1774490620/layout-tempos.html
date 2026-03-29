@@ -1,0 +1,118 @@
+<h2>Layout do Dashboard de Tempos</h2>
+<p class="subtitle">Qual estrutura de página faz mais sentido para você?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="padding:12px;background:#f8fafc;border-radius:6px;font-size:11px">
+        <div style="background:#e2e8f0;border-radius:4px;padding:6px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+          <strong>Tempos Processuais</strong>
+          <span style="background:#fff;border:1px solid #cbd5e1;border-radius:4px;padding:2px 8px">Período ▾</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px">
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:6px;text-align:center"><div style="font-size:14px;font-weight:700;color:#1e40af">12</div><div style="color:#64748b;font-size:9px">Processos</div></div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:6px;text-align:center"><div style="font-size:14px;font-weight:700;color:#2563eb">8</div><div style="color:#64748b;font-size:9px">Com Sentença</div></div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:6px;text-align:center"><div style="font-size:14px;font-weight:700;color:#16a34a">3</div><div style="color:#64748b;font-size:9px">Em Liquidação</div></div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:6px;text-align:center"><div style="font-size:14px;font-weight:700;color:#7c3aed">420d</div><div style="color:#64748b;font-size:9px">Média Geral</div></div>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:8px;margin-bottom:6px">
+          <div style="font-size:10px;font-weight:600;margin-bottom:6px">📊 Tempo Médio por Tribunal</div>
+          <div style="display:flex;gap:4px;align-items:flex-end;height:40px">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1">
+              <div style="width:100%;display:flex;gap:1px;align-items:flex-end;height:32px">
+                <div style="flex:1;background:#3b82f6;height:100%;border-radius:2px 2px 0 0"></div>
+                <div style="flex:1;background:#10b981;height:60%;border-radius:2px 2px 0 0"></div>
+              </div>
+              <div style="font-size:8px;color:#94a3b8">TJPE</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1">
+              <div style="width:100%;display:flex;gap:1px;align-items:flex-end;height:32px">
+                <div style="flex:1;background:#3b82f6;height:70%;border-radius:2px 2px 0 0"></div>
+                <div style="flex:1;background:#10b981;height:40%;border-radius:2px 2px 0 0"></div>
+              </div>
+              <div style="font-size:8px;color:#94a3b8">TRF5</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1">
+              <div style="width:100%;display:flex;gap:1px;align-items:flex-end;height:32px">
+                <div style="flex:1;background:#3b82f6;height:85%;border-radius:2px 2px 0 0"></div>
+                <div style="flex:1;background:#10b981;height:50%;border-radius:2px 2px 0 0"></div>
+              </div>
+              <div style="font-size:8px;color:#94a3b8">TRT6</div>
+            </div>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:6px">
+          <div style="font-size:10px;font-weight:600;margin-bottom:4px">⚖️ Por Tipo de Ação</div>
+          <div style="display:grid;grid-template-columns:3fr 1fr 1fr;gap:2px;font-size:9px">
+            <div style="color:#94a3b8">TIPO DE AÇÃO</div><div style="color:#94a3b8;text-align:center">PROC.</div><div style="color:#94a3b8;text-align:center">MÉDIA</div>
+            <div>Proc. Comum</div><div style="text-align:center">5</div><div style="text-align:center;color:#7c3aed">390d</div>
+            <div>Man. Segurança</div><div style="text-align:center">3</div><div style="text-align:center;color:#7c3aed">180d</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Empilhado (vertical)</h3>
+      <p>Cards → Gráfico completo → Tabela. Fluxo natural de leitura, gráfico com espaço generoso.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="padding:12px;background:#f8fafc;border-radius:6px;font-size:11px">
+        <div style="background:#e2e8f0;border-radius:4px;padding:6px 10px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+          <strong>Tempos Processuais</strong>
+          <span style="background:#fff;border:1px solid #cbd5e1;border-radius:4px;padding:2px 8px">Período ▾</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px">
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:6px;text-align:center"><div style="font-size:14px;font-weight:700;color:#1e40af">12</div><div style="color:#64748b;font-size:9px">Processos</div></div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:6px;text-align:center"><div style="font-size:14px;font-weight:700;color:#2563eb">8</div><div style="color:#64748b;font-size:9px">Com Sentença</div></div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:6px;text-align:center"><div style="font-size:14px;font-weight:700;color:#16a34a">3</div><div style="color:#64748b;font-size:9px">Em Liquidação</div></div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:6px;text-align:center"><div style="font-size:14px;font-weight:700;color:#7c3aed">420d</div><div style="color:#64748b;font-size:9px">Média Geral</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:3fr 2fr;gap:6px">
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:8px">
+            <div style="font-size:10px;font-weight:600;margin-bottom:6px">📊 Por Tribunal</div>
+            <div style="display:flex;gap:4px;align-items:flex-end;height:50px">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1">
+                <div style="width:100%;display:flex;gap:1px;align-items:flex-end;height:40px">
+                  <div style="flex:1;background:#3b82f6;height:100%;border-radius:2px 2px 0 0"></div>
+                  <div style="flex:1;background:#10b981;height:60%;border-radius:2px 2px 0 0"></div>
+                </div>
+                <div style="font-size:8px;color:#94a3b8">TJPE</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1">
+                <div style="width:100%;display:flex;gap:1px;align-items:flex-end;height:40px">
+                  <div style="flex:1;background:#3b82f6;height:70%;border-radius:2px 2px 0 0"></div>
+                  <div style="flex:1;background:#10b981;height:40%;border-radius:2px 2px 0 0"></div>
+                </div>
+                <div style="font-size:8px;color:#94a3b8">TRF5</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex:1">
+                <div style="width:100%;display:flex;gap:1px;align-items:flex-end;height:40px">
+                  <div style="flex:1;background:#3b82f6;height:85%;border-radius:2px 2px 0 0"></div>
+                  <div style="flex:1;background:#10b981;height:50%;border-radius:2px 2px 0 0"></div>
+                </div>
+                <div style="font-size:8px;color:#94a3b8">TRT6</div>
+              </div>
+            </div>
+          </div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:8px">
+            <div style="font-size:10px;font-weight:600;margin-bottom:4px">⚖️ Por Tipo</div>
+            <div style="font-size:9px;display:flex;flex-direction:column;gap:4px">
+              <div style="display:flex;justify-content:space-between"><span>Proc. Comum</span><span style="color:#7c3aed;font-weight:600">390d</span></div>
+              <div style="display:flex;justify-content:space-between"><span>Man. Segurança</span><span style="color:#7c3aed;font-weight:600">180d</span></div>
+              <div style="display:flex;justify-content:space-between"><span>ACP</span><span style="color:#7c3aed;font-weight:600">520d</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Gráfico + Tabela lado a lado</h3>
+      <p>Cards → Gráfico (esq) e Tabela (dir) na mesma linha. Tudo visível sem scroll em telas largas.</p>
+    </div>
+  </div>
+
+</div>

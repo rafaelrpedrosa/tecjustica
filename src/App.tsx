@@ -14,13 +14,16 @@ import DashboardOperacional from '@/pages/DashboardOperacional'
 import DashboardTempos from '@/pages/DashboardTempos'
 import ChatIA from '@/pages/ChatIA'
 import Clientes from '@/pages/Clientes'
+import Configuracoes from '@/pages/Configuracoes'
+import Financeiro from '@/pages/Financeiro'
+import Comunicacao from '@/pages/Comunicacao'
 import NotFound from '@/pages/NotFound'
 import Login from '@/pages/Login'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 1000 * 60 * 5,
       retry: 2,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10_000),
     },
@@ -47,6 +50,9 @@ function App() {
                 <Route path="/dashboard-tempos" element={<DashboardTempos />} />
                 <Route path="/ia" element={<ChatIA />} />
                 <Route path="/clientes" element={<Clientes />} />
+                <Route path="/comunicacao" element={<Comunicacao />} />
+                <Route path="/financeiro" element={<Financeiro />} />
+                <Route path="/configuracoes" element={<Configuracoes />} />
                 <Route path="*" element={<NotFound />} />
               </Route>
             </Route>

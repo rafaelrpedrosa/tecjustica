@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 interface TabItem {
   label: React.ReactNode
@@ -15,6 +15,12 @@ interface TabsProps {
 const Tabs: React.FC<TabsProps> = ({ items, defaultValue, onChange }) => {
   const [activeTab, setActiveTab] = useState(defaultValue || items?.[0]?.value || '')
 
+  useEffect(() => {
+    if (defaultValue) {
+      setActiveTab(defaultValue)
+    }
+  }, [defaultValue])
+
   const handleTabChange = (value: string) => {
     setActiveTab(value)
     onChange?.(value)
@@ -22,23 +28,25 @@ const Tabs: React.FC<TabsProps> = ({ items, defaultValue, onChange }) => {
 
   return (
     <div className="w-full">
-      <div className="border-b border-gray-200 flex gap-0">
-        {items.map((item) => (
-          <button
-            key={item.value}
-            onClick={() => handleTabChange(item.value)}
-            className={`px-4 py-3 font-medium text-sm border-b-2 transition-colors ${
-              activeTab === item.value
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
+      <div className="overflow-x-auto border-b border-gray-200">
+        <div className="flex min-w-max gap-2 px-5 py-3">
+          {items.map(item => (
+            <button
+              key={item.value}
+              onClick={() => handleTabChange(item.value)}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === item.value
+                  ? 'bg-primary-light text-primary'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="pt-4">
-        {items.find((item) => item.value === activeTab)?.content}
+        {items.find(item => item.value === activeTab)?.content}
       </div>
     </div>
   )

@@ -1,0 +1,64 @@
+<h2>Diagnóstico Real — depois de ler o código</h2>
+<p class="subtitle">O audit anterior exagerou. Aqui está o que realmente está faltando.</p>
+
+<div class="section">
+  <h3>✅ Fila de Diligências — quase completa</h3>
+  <p>Tem: estado vazio (<code>&lt;Empty /&gt;</code>), filtros de prioridade + status, busca, cores por prioridade, ações por linha, modal de retorno.</p>
+  <p><strong>O que falta de verdade:</strong></p>
+  <ul>
+    <li>❌ Sem botão "Limpar filtros" — usuário precisa apagar manualmente cada campo</li>
+    <li>❌ Sem contagem de resultados filtrados — ex: "3 de 12 diligências"</li>
+    <li>❌ Botão "Concluir" sem confirmação — clique acidental conclui sem pedir confirmação</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>✅ Dashboard Operacional — completo e funcional</h3>
+  <p>Tem: 6 cards de métricas com dados reais, top-5 urgentes, navegação para a fila, atualização manual.</p>
+  <p><strong>O que falta de verdade:</strong></p>
+  <ul>
+    <li>❌ Quando não há nenhuma diligência, mostra 6 cards com "0" — sem orientação sobre o que fazer</li>
+    <li>❌ Sem link direto para ProcessDetail a partir dos cards de métricas</li>
+    <li>❌ Card "Ação hoje" não tem link para ver quais são as diligências do dia</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>📋 Proposta de melhorias (pequenas e seguras)</h3>
+  <div class="options">
+    <div class="option" data-choice="filtros" onclick="toggleSelect(this)">
+      <div class="letter">1</div>
+      <div class="content">
+        <h3>Fila — Limpar filtros + contagem</h3>
+        <p>Botão "Limpar" aparece quando algum filtro está ativo. Contador "X de Y diligências" no header da tabela.</p>
+        <p><em>~20 linhas, zero risco</em></p>
+      </div>
+    </div>
+    <div class="option" data-choice="confirmar" onclick="toggleSelect(this)">
+      <div class="letter">2</div>
+      <div class="content">
+        <h3>Fila — Confirmação ao concluir</h3>
+        <p>Modal simples "Confirmar conclusão?" antes de marcar como CONCLUÍDA. Evita clique acidental.</p>
+        <p><em>~15 linhas</em></p>
+      </div>
+    </div>
+    <div class="option" data-choice="dashboard-empty" onclick="toggleSelect(this)">
+      <div class="letter">3</div>
+      <div class="content">
+        <h3>Dashboard — Estado vazio inteligente</h3>
+        <p>Quando não há diligências, mostrar mensagem orientativa: "Abra um processo com gargalo e clique em Gerar Diligência para começar."</p>
+        <p><em>~10 linhas</em></p>
+      </div>
+    </div>
+    <div class="option" data-choice="dashboard-acao" onclick="toggleSelect(this)">
+      <div class="letter">4</div>
+      <div class="content">
+        <h3>Dashboard — Card "Ação hoje" clicável</h3>
+        <p>Clicar no card "Ação hoje" navega para a Fila já filtrada por dataPrevista = hoje.</p>
+        <p><em>~5 linhas</em></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle">Selecione o que quer implementar e me diz no terminal.</p>

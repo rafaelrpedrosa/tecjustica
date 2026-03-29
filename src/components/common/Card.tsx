@@ -1,3 +1,4 @@
+// src/components/common/Card.tsx
 import React from 'react'
 
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -8,7 +9,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, children, ...props }, ref) => (
     <div
       ref={ref}
-      className={`bg-white rounded-lg border border-gray-200 shadow-sm ${className || ''}`}
+      className={`overflow-hidden rounded-2xl border border-border bg-surface shadow-sm ${className || ''}`}
       {...props}
     >
       {children}
@@ -24,15 +25,21 @@ export const CardHeader: React.FC<{ children: React.ReactNode; className?: strin
   children,
   className,
 }) => (
-  <div className={`px-6 py-4 border-b border-gray-200 ${className || ''}`}>{children}</div>
+  <div className={`border-b border-border-subtle px-5 py-4 ${className || ''}`}>
+    {children}
+  </div>
 )
 
 export const CardContent: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
   className,
-}) => <div className={`px-6 py-4 ${className || ''}`}>{children}</div>
+}) => <div className={`px-5 py-5 ${className || ''}`}>{children}</div>
 
 export const CardFooter: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
   className,
-}) => <div className={`px-6 py-4 border-t border-gray-200 bg-gray-50 ${className || ''}`}>{children}</div>
+}) => (
+  <div className={`border-t border-border-subtle bg-bg px-5 py-4 ${className || ''}`}>
+    {children}
+  </div>
+)

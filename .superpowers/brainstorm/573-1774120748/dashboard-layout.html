@@ -1,0 +1,127 @@
+<h2>Dashboard Operacional — Layout</h2>
+<p class="subtitle">Como organizar os cards de métricas e a lista de urgentes?</p>
+
+<div class="options">
+  <div class="option" data-choice="compacto" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Métricas em cima, urgentes embaixo</h3>
+      <p>Linha de números no topo, lista de top-5 urgentes logo abaixo. Layout vertical simples.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Dashboard Operacional</div>
+        <div class="mockup-body" style="padding:12px;display:flex;flex-direction:column;gap:10px">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+            <div style="background:#fef2f2;border-radius:6px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:700;color:#dc2626">3</div>
+              <div style="font-size:10px;color:#6b7280">Urgentes</div>
+            </div>
+            <div style="background:#fffbeb;border-radius:6px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:700;color:#d97706">8</div>
+              <div style="font-size:10px;color:#6b7280">Pendentes</div>
+            </div>
+            <div style="background:#eff6ff;border-radius:6px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:700;color:#2563eb">5</div>
+              <div style="font-size:10px;color:#6b7280">Em andamento</div>
+            </div>
+            <div style="background:#f0fdf4;border-radius:6px;padding:10px;text-align:center">
+              <div style="font-size:22px;font-weight:700;color:#16a34a">12</div>
+              <div style="font-size:10px;color:#6b7280">Concluídas</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div style="background:#f8fafc;border-radius:6px;padding:10px;text-align:center">
+              <div style="font-size:20px;font-weight:700;color:#374151">24</div>
+              <div style="font-size:10px;color:#6b7280">Média dias parado</div>
+            </div>
+            <div style="background:#fdf4ff;border-radius:6px;padding:10px;text-align:center">
+              <div style="font-size:20px;font-weight:700;color:#9333ea">2</div>
+              <div style="font-size:10px;color:#6b7280">Ação hoje</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;margin-bottom:6px;color:#374151">🔥 Top 5 Urgentes</div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">
+                <span style="font-size:10px">Maria Silva</span>
+                <span style="font-size:10px;font-weight:700;color:#dc2626">47 dias</span>
+                <span style="font-size:10px;color:#6b7280">📞 Secretaria</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">
+                <span style="font-size:10px">Pedro Oliveira</span>
+                <span style="font-size:10px;font-weight:700;color:#dc2626">38 dias</span>
+                <span style="font-size:10px;color:#6b7280">📞 Gabinete</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#fffbeb;border-radius:4px;border-left:3px solid #f59e0b">
+                <span style="font-size:10px">João Souza</span>
+                <span style="font-size:10px;font-weight:700;color:#d97706">22 dias</span>
+                <span style="font-size:10px;color:#6b7280">🔄 Recheck</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="lateral" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Métricas + Urgentes lado a lado</h3>
+      <p>Coluna esquerda com números, coluna direita com lista de urgentes. Tudo visível sem scroll.</p>
+      <div class="mockup" style="margin-top:12px">
+        <div class="mockup-header">Dashboard Operacional</div>
+        <div class="mockup-body" style="padding:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:11px;font-weight:600;color:#374151">Resumo</div>
+            <div style="background:#fef2f2;border-radius:6px;padding:8px;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:10px;color:#6b7280">Urgentes</span>
+              <span style="font-size:18px;font-weight:700;color:#dc2626">3</span>
+            </div>
+            <div style="background:#fffbeb;border-radius:6px;padding:8px;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:10px;color:#6b7280">Pendentes</span>
+              <span style="font-size:18px;font-weight:700;color:#d97706">8</span>
+            </div>
+            <div style="background:#eff6ff;border-radius:6px;padding:8px;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:10px;color:#6b7280">Em andamento</span>
+              <span style="font-size:18px;font-weight:700;color:#2563eb">5</span>
+            </div>
+            <div style="background:#f0fdf4;border-radius:6px;padding:8px;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:10px;color:#6b7280">Concluídas</span>
+              <span style="font-size:18px;font-weight:700;color:#16a34a">12</span>
+            </div>
+            <div style="background:#f8fafc;border-radius:6px;padding:8px;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:10px;color:#6b7280">Média dias parado</span>
+              <span style="font-size:16px;font-weight:700;color:#374151">24d</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:#374151;margin-bottom:8px">🔥 Top 5 Urgentes</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="padding:8px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">
+                <div style="display:flex;justify-content:space-between">
+                  <span style="font-size:11px;font-weight:600">Maria Silva</span>
+                  <span style="font-size:11px;font-weight:700;color:#dc2626">47d</span>
+                </div>
+                <div style="font-size:10px;color:#6b7280;margin-top:2px">📞 Lig. Secretaria</div>
+              </div>
+              <div style="padding:8px;background:#fef2f2;border-radius:4px;border-left:3px solid #dc2626">
+                <div style="display:flex;justify-content:space-between">
+                  <span style="font-size:11px;font-weight:600">Pedro Oliveira</span>
+                  <span style="font-size:11px;font-weight:700;color:#dc2626">38d</span>
+                </div>
+                <div style="font-size:10px;color:#6b7280;margin-top:2px">📞 Lig. Gabinete</div>
+              </div>
+              <div style="padding:8px;background:#fffbeb;border-radius:4px;border-left:3px solid #f59e0b">
+                <div style="display:flex;justify-content:space-between">
+                  <span style="font-size:11px;font-weight:600">João Souza</span>
+                  <span style="font-size:11px;font-weight:700;color:#d97706">22d</span>
+                </div>
+                <div style="font-size:10px;color:#6b7280;margin-top:2px">🔄 Recheck</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

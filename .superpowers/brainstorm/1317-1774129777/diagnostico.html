@@ -1,0 +1,60 @@
+<h2>Diagnóstico UX — TecJustica</h2>
+<p class="subtitle">Selecione as áreas que quer priorizar nesta sessão</p>
+
+<div class="options" data-multiselect>
+
+  <div class="option" data-choice="fila" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Fila de Diligências — Alta Prioridade</h3>
+      <p>❌ Sem estado vazio (tela em branco quando não há dados)<br>
+         ❌ Sem loading state<br>
+         ❌ Sem feedback de erro<br>
+         ❌ Sem botão "Limpar filtros"</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="dashboard" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Dashboard Operacional — Alta Prioridade</h3>
+      <p>❌ Dados não estão sendo exibidos (scaffolding incompleto)<br>
+         ❌ Sem métricas reais de diligências<br>
+         ❌ Sem estados de loading / erro / vazio</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="meus" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Meus Processos — Média Prioridade</h3>
+      <p>⚠️ Delete sem confirmação (risco de perda acidental)<br>
+         ⚠️ Toast sem variantes visuais (sucesso / erro idênticos)<br>
+         ⚠️ Data de última verificação mostra em branco<br>
+         ⚠️ Sem "Limpar filtros"</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="nav" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content">
+      <h3>Navegação — Baixa Prioridade</h3>
+      <p>⚠️ Emoji 📊 inconsistente com outros links<br>
+         ⚠️ Badge de alertas sem transição visual<br>
+         ⚠️ Polling ativo em todas as páginas (60s)</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="home" onclick="toggleSelect(this)">
+    <div class="letter">E</div>
+    <div class="content">
+      <h3>Home / Busca — Baixa Prioridade</h3>
+      <p>⚠️ Sem botão "usar exemplo" para CNJ<br>
+         ⚠️ Seção "Funcionalidades" sem CTA ativo<br>
+         ⚠️ Mensagem de erro sem destaque visual</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top: 1.5rem">Pode selecionar múltiplos. Depois me diga no terminal qual ordem prefere atacar.</p>

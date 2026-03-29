@@ -1,0 +1,84 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  .typo-card {
+    background: #161b27;
+    border: 1px solid #1c2333;
+    border-radius: 10px;
+    padding: 20px 24px;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    margin-bottom: 12px;
+  }
+  .typo-card:hover { border-color: #2563eb; }
+  .typo-card.selected { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.3); }
+  .typo-card .tag {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: #4b6fa5;
+    margin-bottom: 12px;
+  }
+  .typo-card .headline { color: #e2e8f0; margin: 0 0 6px 0; }
+  .typo-card .body-text { color: #8b9cb5; font-size: 13px; line-height: 1.6; margin: 0 0 10px 0; }
+  .typo-card .meta { display: flex; gap: 16px; font-size: 11px; color: #4b6fa5; }
+  .typo-card .badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #1c2333;
+    color: #93c5fd;
+    font-weight: 500;
+    margin-left: auto;
+  }
+  .typo-card .number-demo {
+    font-size: 11px;
+    color: #64748b;
+    background: #0d1117;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+  }
+</style>
+
+<h2>Tipografia</h2>
+<p class="subtitle">A fonte define o caráter do sistema — escolha uma que transmita profissionalismo sem ser genérica</p>
+
+<div class="typo-card" data-choice="ibm-plex" onclick="toggleSelect(this)">
+  <div style="display:flex;align-items:center;">
+    <div class="tag">A — IBM Plex Sans</div>
+    <div class="badge">Recomendado</div>
+  </div>
+  <h2 class="headline" style="font-family:'IBM Plex Sans',sans-serif;font-size:22px;font-weight:600;">Processo 0000061-33.2026.5.06.0008</h2>
+  <p class="body-text" style="font-family:'IBM Plex Sans',sans-serif;">Vara do Trabalho de Fortaleza — 1ª Instância · Fase: Conhecimento · Última movimentação há 3 dias</p>
+  <div class="meta">
+    <span style="font-family:'IBM Plex Sans',sans-serif;">Partes · Movimentações · Documentos</span>
+    <span class="number-demo">0000061-33.2026.5.06.0008</span>
+  </div>
+  <p style="font-size:11px;color:#4b6fa5;margin-top:10px;font-family:'IBM Plex Sans',sans-serif;">Criada pela IBM para interfaces técnicas e sistemas corporativos. Excelente legibilidade em densidades altas. Números muito bem formados para CNJ.</p>
+</div>
+
+<div class="typo-card" data-choice="dm-sans" onclick="toggleSelect(this)">
+  <div class="tag">B — DM Sans</div>
+  <h2 class="headline" style="font-family:'DM Sans',sans-serif;font-size:22px;font-weight:600;">Processo 0000061-33.2026.5.06.0008</h2>
+  <p class="body-text" style="font-family:'DM Sans',sans-serif;">Vara do Trabalho de Fortaleza — 1ª Instância · Fase: Conhecimento · Última movimentação há 3 dias</p>
+  <div class="meta">
+    <span style="font-family:'DM Sans',sans-serif;">Partes · Movimentações · Documentos</span>
+    <span class="number-demo">0000061-33.2026.5.06.0008</span>
+  </div>
+  <p style="font-size:11px;color:#4b6fa5;margin-top:10px;font-family:'DM Sans',sans-serif;">Moderna, geométrica, levemente humanista. Usada pelo Anthropic, Linear e sistemas de design atuais. Mais quente que Inter, menos técnica que IBM Plex.</p>
+</div>
+
+<div class="typo-card" data-choice="geist" onclick="toggleSelect(this)">
+  <div class="tag">C — Geist (Vercel)</div>
+  <h2 class="headline" style="font-family:'Geist',sans-serif;font-size:22px;font-weight:600;">Processo 0000061-33.2026.5.06.0008</h2>
+  <p class="body-text" style="font-family:'Geist',sans-serif;">Vara do Trabalho de Fortaleza — 1ª Instância · Fase: Conhecimento · Última movimentação há 3 dias</p>
+  <div class="meta">
+    <span style="font-family:'Geist',sans-serif;">Partes · Movimentações · Documentos</span>
+    <span class="number-demo">0000061-33.2026.5.06.0008</span>
+  </div>
+  <p style="font-size:11px;color:#4b6fa5;margin-top:10px;font-family:'Geist',sans-serif;">Fonte da Vercel, projetada especificamente para interfaces de produto. Muito limpa, neutra, excelente para dados e código. Dá um ar de sistema de alta qualidade.</p>
+</div>

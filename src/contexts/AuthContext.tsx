@@ -21,10 +21,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false)
       return
     }
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      setLoading(false)
-    })
+    supabase.auth.getSession()
+      .then(({ data }) => setSession(data.session))
+      .catch(e => console.error('Erro ao carregar sessão:', e))
+      .finally(() => setLoading(false))
     const { data: listener } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
     return () => listener?.subscription.unsubscribe()
   }, [])
@@ -36,8 +36,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    await supabase?.auth.signOut()
-    setSession(null)
+    try {
+      await supabase?.auth.signOut()
+    } catch (e) {
+      console.error('Erro ao fazer logout:', e)
+    } finally {
+      setSession(null)
+      setLoading(false)
+    }
   }
 
   return (

@@ -49,7 +49,7 @@ export async function searchPrecedents(
   // 1. Verifica cache em memória
   const cached = getCache<PrecedentSearchResult>(cacheKey)
   if (cached) {
-    console.log(`✓ Precedentes para "${termo}" carregados do cache`)
+    if (import.meta.env.DEV) console.log(`✓ Precedentes para "${termo}" carregados do cache`)
     return cached
   }
 
