@@ -37,7 +37,7 @@ export function EditarFaseModal({ isOpen, onClose, onSuccess, processo }: Props)
     setErro(null)
 
     try {
-      await atualizarProcesso(processo.id, { faseProcessual: fase })
+      await atualizarProcesso(processo.cnj, { faseProcessual: fase })
       onSuccess()
       onClose()
     } catch {
