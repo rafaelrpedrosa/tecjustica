@@ -154,6 +154,10 @@ const DashboardTempos: React.FC = () => {
     }
   }, [navigate])
 
+  const handleVerProcesso = useCallback((cnj: string) => {
+    navigate(`/process/${encodeURIComponent(cnj)}`)
+  }, [navigate])
+
   useEffect(() => {
     carregar(periodo)
   }, [periodo, carregar])
@@ -302,9 +306,12 @@ const DashboardTempos: React.FC = () => {
                             </td>
                             <td className="px-4 py-3 text-gray-700">{formatDias(processo.tempoTotalDias)}</td>
                             <td className="px-4 py-3 text-gray-700">{formatDate(processo.ultimaMovimentacaoData)}</td>
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3 space-x-2 flex">
                               <Button variant="secondary" size="sm" onClick={() => handleAbrirProcesso(processo.cnj)}>
-                                Abrir processo
+                                Editar Fase
+                              </Button>
+                              <Button variant="secondary" size="sm" onClick={() => handleVerProcesso(processo.cnj)}>
+                                Ver Processo
                               </Button>
                             </td>
                           </tr>
@@ -436,9 +443,9 @@ const DashboardTempos: React.FC = () => {
           setProcessoSelecionado(null)
         }}
         onSuccess={() => {
-          if (processoSelecionado) {
-            navigate(`/process/${encodeURIComponent(processoSelecionado.cnj)}`)
-          }
+          setModalOpen(false)
+          setProcessoSelecionado(null)
+          carregar(periodo)
         }}
         processo={processoSelecionado}
       />
