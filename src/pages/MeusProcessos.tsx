@@ -369,9 +369,6 @@ export default function MeusProcessos() {
                         <Badge variant={POLO_VARIANT[proc.clientePolo]}>
                           {POLO_LABELS[proc.clientePolo]}
                         </Badge>
-                        <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-xs text-cyan-700">
-                          {FASE_LABELS[proc.faseProcessual || 'CONHECIMENTO']}
-                        </span>
                         {proc.monitorar && (
                           <span className="rounded border border-green-200 bg-green-50 px-1.5 py-0.5 text-xs text-green-600">
                             Monitorando
