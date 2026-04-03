@@ -1922,6 +1922,29 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
       const movLiquidacao = movsAposSentenca.length ? findMov(movsAposSentenca, LIQUIDACAO) : null
       const ultimaMov = movs[movs.length - 1]
 
+      // Detectar padrões de fase
+      const temRPV = (ultimaMov.descricao || '').toLowerCase().includes('rpv') || (ultimaMov.descricao || '').toLowerCase().includes('requisição de pagamento')
+      const temArquivado = (ultimaMov.descricao || '').toLowerCase().includes('arquivado') || (ultimaMov.descricao || '').toLowerCase().includes('arquivamento')
+
+      // Determinar fase e contar
+      let fase = 'Conhecimento'
+      if (temArquivado) {
+        fase = 'Arquivado'
+        totalArquivado++
+      } else if (temRPV) {
+        fase = 'Aguardando RPV'
+        totalAguardandoRpv++
+      } else if (movLiquidacao && movSentenca) {
+        fase = 'Liquidação / Execução'
+        totalEmLiquidacao++
+      } else if (movSentenca) {
+        fase = 'Sentenciado'
+      } else {
+        fase = 'Conhecimento'
+        totalEmConhecimento++
+      }
+
+      // Contar também baseado em encontrar sentença (para compatibilidade com resumo)
       if (movSentenca) {
         const dias = diasEntre(p.data_abertura, movSentenca.data)
         if (dias >= 0) {
@@ -1930,31 +1953,12 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
         }
       }
       if (movLiquidacao && movSentenca) {
-        totalEmLiquidacao++
         byTribunal[tribunal].sentLiquidDias.push(diasEntre(movSentenca.data, movLiquidacao.data))
       }
+
       const tempoTotal = diasEntre(p.data_abertura, ultimaMov.data)
       temposTotais.push(tempoTotal)
       byTipo[tipo].temposTotais.push(tempoTotal)
-
-      // Fase processual detectada
-      const temRPV = (ultimaMov.descricao || '').toLowerCase().includes('rpv') || (ultimaMov.descricao || '').toLowerCase().includes('requisição de pagamento')
-      const temArquivado = (ultimaMov.descricao || '').toLowerCase().includes('arquivado') || (ultimaMov.descricao || '').toLowerCase().includes('arquivamento')
-      let fase = 'Conhecimento'
-
-      if (temArquivado) {
-        fase = 'Arquivado'
-        totalArquivado++
-      } else if (temRPV) {
-        fase = 'Aguardando RPV'
-        totalAguardandoRpv++
-      } else if (movLiquidacao) {
-        fase = 'Liquidação / Execução'
-      } else if (movSentenca) {
-        fase = 'Sentenciado'
-      } else {
-        totalEmConhecimento++
-      }
 
       if (!byFase[fase]) byFase[fase] = { total: 0, temposTotais: [] }
       byFase[fase].total++
