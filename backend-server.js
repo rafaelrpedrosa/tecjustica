@@ -1794,8 +1794,12 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
     }
     if (!eps || eps.length === 0) {
       return res.json({
-        porTribunal: [], porTipoAcao: [],
-        resumo: { totalProcessos: 0, processosComMovimentos: 0, processosComSentenca: 0, processosEmLiquidacao: 0, mediaGeralDias: null },
+        porTribunal: [], porTipoAcao: [], porFase: [], porAssunto: [], processos: [],
+        resumo: {
+          totalProcessos: 0, processosComMovimentos: 0, processosComSentenca: 0,
+          processosEmLiquidacao: 0, processosEmConhecimento: 0, processosAguardandoRpv: 0,
+          processosArquivados: 0, mediaGeralDias: null
+        },
       })
     }
 
@@ -1893,7 +1897,7 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
     const byTipo = {}
     const byFase = {}
     const byAssunto = {}
-    let totalComMovimentos = 0, totalComSentenca = 0, totalEmLiquidacao = 0, totalEmConhecimento = 0, totalAguardandoRpv = 0, totalArquivado = 0
+    let totalComMovimentos = 0, totalEmLiquidacao = 0, totalEmConhecimento = 0, totalAguardandoRpv = 0, totalArquivado = 0, totalSentenciado = 0
     const temposTotais = []
 
     for (const p of processosEnriquecidos || []) {
@@ -1926,7 +1930,7 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
       const temRPV = (ultimaMov.descricao || '').toLowerCase().includes('rpv') || (ultimaMov.descricao || '').toLowerCase().includes('requisição de pagamento')
       const temArquivado = (ultimaMov.descricao || '').toLowerCase().includes('arquivado') || (ultimaMov.descricao || '').toLowerCase().includes('arquivamento')
 
-      // Determinar fase e contar
+      // Determinar fase e contar (mutuamente exclusivos)
       let fase = 'Conhecimento'
       if (temArquivado) {
         fase = 'Arquivado'
@@ -1939,16 +1943,16 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
         totalEmLiquidacao++
       } else if (movSentenca) {
         fase = 'Sentenciado'
+        totalSentenciado++
       } else {
         fase = 'Conhecimento'
         totalEmConhecimento++
       }
 
-      // Contar também baseado em encontrar sentença (para compatibilidade com resumo)
+      // Contar para métricas de tempo por tribunal (não é duplicação, é agregação por tribunal)
       if (movSentenca) {
         const dias = diasEntre(p.data_abertura, movSentenca.data)
         if (dias >= 0) {
-          totalComSentenca++
           byTribunal[tribunal].distSentencaDias.push(dias)
         }
       }
@@ -1996,11 +2000,11 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
       porTipoAcao,
       porFase,
       porAssunto,
-      processos: porFase.length > 0 ? [] : [], // Placeholder para dados de processos individuais, se necessário
+      processos: porFase.length > 0 ? [] : [],
       resumo: {
         totalProcessos: cnjs.length,
         processosComMovimentos: totalComMovimentos,
-        processosComSentenca: totalComSentenca,
+        processosComSentenca: totalSentenciado + totalEmLiquidacao,
         processosEmLiquidacao: totalEmLiquidacao,
         processosEmConhecimento: totalEmConhecimento,
         processosAguardandoRpv: totalAguardandoRpv,
