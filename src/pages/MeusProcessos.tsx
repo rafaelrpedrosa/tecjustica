@@ -32,14 +32,6 @@ const POLO_VARIANT: Record<string, 'success' | 'danger' | 'default'> = {
   TERCEIRO: 'default',
 }
 
-const FASE_LABELS: Record<FaseProcessual, string> = {
-  CONHECIMENTO: 'Conhecimento',
-  SENTENCIADO: 'Sentenciado',
-  LIQUIDACAO_EXECUCAO: 'Liquidação / Execução',
-  AGUARDANDO_RPV: 'Aguardando RPV',
-  ARQUIVADO: 'Arquivado',
-}
-
 const DATE_FMT: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', year: 'numeric' }
 
 function formatDate(iso?: string) {

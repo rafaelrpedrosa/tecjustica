@@ -2037,12 +2037,33 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
       totalProcessos: d.total,
     })).sort((a, b) => b.totalProcessos - a.totalProcessos).slice(0, 10)
 
+    // Construir array de processos com fase para exibição
+    const processosComFase = (processosEnriquecidos || []).map(p => {
+      const movs = (p.process_movements || []).sort((a, b) => new Date(a.data) - new Date(b.data))
+      if (movs.length === 0) return null
+      const { fase, ultimaMov } = detectarFase(movs)
+      const tempoTotal = p.data_abertura ? diasEntre(p.data_abertura, ultimaMov.data) : null
+      return {
+        cnj: p.cnj,
+        clienteNome: p.clienteNome || p.cliente_nome || 'Cliente não informado',
+        tribunal: p.tribunal,
+        classe: p.classe,
+        assunto: p.assunto,
+        fase,
+        tempoTotalDias: tempoTotal,
+        ultimaMovimentacaoData: ultimaMov?.data || null,
+        temSentenca: false,
+        emLiquidacao: false,
+        aguardandoRpv: false,
+      }
+    }).filter(p => p !== null)
+
     return res.json({
       porTribunal,
       porTipoAcao,
       porFase,
       porAssunto,
-      processos: porFase.length > 0 ? [] : [],
+      processos: processosComFase,
       resumo: {
         totalProcessos: cnjs.length,
         processosComMovimentos: totalComMovimentos,
