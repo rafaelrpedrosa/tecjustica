@@ -1970,6 +1970,12 @@ app.get('/api/escritorio/metricas-tempo', generalLimiter, async (req, res) => {
 
     }
 
+    // Contar processos SEM movimentos como "EM CONHECIMENTO"
+    const processosSemMovimentos = base.filter(p => p.process_movements.length === 0)
+    totalEmConhecimento += processosSemMovimentos.length
+    if (!byFase['Conhecimento']) byFase['Conhecimento'] = { total: 0, temposTotais: [] }
+    byFase['Conhecimento'].total += processosSemMovimentos.length
+
     const porTribunal = Object.entries(byTribunal).map(([tribunal, d]) => ({
       tribunal,
       mediaDistribuicaoSentenca: media(d.distSentencaDias),
