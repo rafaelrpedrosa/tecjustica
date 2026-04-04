@@ -16,13 +16,11 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          if (id.includes('node_modules')) {
-            if (id.includes('react')) return 'vendor-react'
-            if (id.includes('supabase')) return 'vendor-supabase'
-            if (id.includes('tanstack')) return 'vendor-query'
-            if (id.includes('anthropic')) return 'vendor-anthropic'
-            return 'vendor'
-          }
+          if (id.includes('node_modules/react')) return 'vendor-react'
+          if (id.includes('node_modules/react-dom')) return 'vendor-react'
+          if (id.includes('node_modules/@supabase')) return 'vendor-supabase'
+          if (id.includes('node_modules/@tanstack')) return 'vendor-query'
+          if (id.includes('node_modules/@anthropic')) return 'vendor-anthropic'
           if (id.includes('/src/pages/')) return 'pages'
           if (id.includes('/src/services/')) return 'services'
           if (id.includes('/src/components/')) return 'components'
