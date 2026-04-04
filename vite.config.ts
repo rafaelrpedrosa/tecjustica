@@ -12,4 +12,24 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('react')) return 'vendor-react'
+            if (id.includes('supabase')) return 'vendor-supabase'
+            if (id.includes('tanstack')) return 'vendor-query'
+            if (id.includes('anthropic')) return 'vendor-anthropic'
+            return 'vendor'
+          }
+          if (id.includes('/src/pages/')) return 'pages'
+          if (id.includes('/src/services/')) return 'services'
+          if (id.includes('/src/components/')) return 'components'
+          if (id.includes('/src/hooks/')) return 'hooks'
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
+  },
 })
