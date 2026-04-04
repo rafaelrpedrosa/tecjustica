@@ -209,7 +209,7 @@ Para modais com muitos campos que podem transbordar a tela: adicionar `max-h-[90
 
 ### Diligências
 
-`src/services/diligencia.service.ts` — CRUD via REST `/api/diligencias` com fallback localStorage. Migração automática one-shot na primeira chamada bem-sucedida (flag `'rpatec_diligencias_migrated'`).
+`src/services/diligencia.service.ts` — CRUD via REST `/api/diligencias` com fallback localStorage. Migração automática one-shot na primeira chamada bem-sucedida (flag `'jusflow_diligencias_migrated'`).
 Páginas: `src/pages/FilaDiligencias.tsx`, `src/pages/DashboardOperacional.tsx`.
 Modal: `src/components/process/RetornoModal.tsx`.
 
