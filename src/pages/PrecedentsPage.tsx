@@ -38,6 +38,15 @@ const PrecedentsPage: React.FC = () => {
   const [inputQuery, setInputQuery] = useState('')
   const [filters, setFilters] = useState({ tribunal: '', tipo: '' })
   const [inputError, setInputError] = useState<string | null>(null)
+  const [expandedTeor, setExpandedTeor] = useState<string | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const handleCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(id)
+      setTimeout(() => setCopiedId(null), 2000)
+    })
+  }
 
   const filtrosAtivos = (filters.tribunal || filters.tipo)
     ? {
@@ -155,7 +164,25 @@ const PrecedentsPage: React.FC = () => {
                     <div className="space-y-4">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">{precedent.ementa}</h3>
+                          <h3 className="text-lg font-semibold text-gray-900 mb-3 line-clamp-2">{precedent.ementa}</h3>
+                          <div className="flex items-center gap-2 flex-wrap mb-3">
+                            <button
+                              onClick={() => handleCopy(precedent.ementa, `ementa-${precedent.id}`)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              title="Copiar ementa"
+                            >
+                              {copiedId === `ementa-${precedent.id}` ? '✓ Copiado' : '📋 Copiar ementa'}
+                            </button>
+                            {precedent.href && (
+                              <button
+                                onClick={() => handleCopy(precedent.href!, `link-${precedent.id}`)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                title="Copiar link"
+                              >
+                                {copiedId === `link-${precedent.id}` ? '✓ Link copiado' : '🔗 Copiar link'}
+                              </button>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <Badge variant={getTypeColor(precedent.tipo)}>{getTypeLabel(precedent.tipo)}</Badge>
                             <span className="text-xs text-gray-500 font-medium">{precedent.tribunal}</span>
@@ -176,10 +203,18 @@ const PrecedentsPage: React.FC = () => {
                           <p className="text-gray-700 leading-relaxed text-sm">{precedent.decisao}</p>
                         </div>
                       )}
-                      {precedent.teor && (
+                      {(precedent.teor || precedent.tese) && (
                         <div className="pt-4 border-t border-gray-200">
-                          <p className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-2">Teor Completo</p>
-                          <pre className="text-gray-700 leading-relaxed text-sm whitespace-pre-wrap font-sans">{precedent.teor}</pre>
+                          <button
+                            onClick={() => setExpandedTeor(expandedTeor === precedent.id ? null : precedent.id)}
+                            className="flex items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700 mb-2"
+                          >
+                            <span className="text-xs uppercase tracking-widest">Ver Teor Completo</span>
+                            <span className={`transition-transform ${expandedTeor === precedent.id ? 'rotate-180' : ''}`}>▼</span>
+                          </button>
+                          {expandedTeor === precedent.id && (
+                            <pre className="text-gray-700 leading-relaxed text-sm whitespace-pre-wrap font-sans bg-gray-50 p-4 rounded border border-gray-200 max-h-96 overflow-y-auto">{precedent.teor || precedent.tese}</pre>
+                          )}
                         </div>
                       )}
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-2">

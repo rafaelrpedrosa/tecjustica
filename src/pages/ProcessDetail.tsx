@@ -23,6 +23,7 @@ import { useToast } from '@/hooks/useToast'
 import { listarDiligenciasPorCNJ, salvarDiligencia } from '@/services/diligencia.service'
 import { verificarCadastro, monitorarProcesso } from '@/services/escritorio.service'
 import { getMovementAviso, refreshProcessMovements } from '@/services/process.service'
+import { enviarMensagem } from '@/services/ia.service'
 import {
   approveAndSendClientMessage,
   createDocumentDraft,
@@ -81,6 +82,22 @@ const ProcessDetail: React.FC = () => {
   const [retornoModal, setRetornoModal] = useState<DiligenciaOperacional | null>(null)
   const [movementAviso, setMovementAviso] = useState<{ aviso: string; podeRefresh: boolean } | null>(null)
   const [isRefreshingMovements, setIsRefreshingMovements] = useState(false)
+  const [resumoIA, setResumoIA] = useState<string | null>(() => {
+    if (!cnj) return null
+    try {
+      const cached = localStorage.getItem(`resumo_ia_${cnj}`)
+      if (cached) return JSON.parse(cached).resumo
+    } catch { /* ignore */ }
+    return null
+  })
+  const [resumoIAStatus, setResumoIAStatus] = useState<'idle' | 'loading' | 'done' | 'error'>(() => {
+    if (!cnj) return 'idle'
+    try {
+      const cached = localStorage.getItem(`resumo_ia_${cnj}`)
+      if (cached) return 'done'
+    } catch { /* ignore */ }
+    return 'idle'
+  })
   const { toasts, showToast } = useToast()
 
   useEffect(() => {
@@ -103,6 +120,53 @@ const ProcessDetail: React.FC = () => {
     const aviso = getMovementAviso(cnj)
     setMovementAviso(aviso)
   }, [cnj, movementsQuery.data])
+
+  // Gera/atualiza resumo IA quando movimentos carregam — persiste em localStorage
+  useEffect(() => {
+    if (!cnj || movementsQuery.isLoading || !movementsQuery.data) return
+
+    const primeiroMov = movementsQuery.data[0]
+    const chaveMovimento = primeiroMov
+      ? `${primeiroMov.descricao}|${typeof primeiroMov.data === 'string' ? primeiroMov.data : primeiroMov.data?.toISOString?.()}`
+      : 'sem-movimentos'
+
+    // Verifica se o cache ainda é válido
+    try {
+      const cached = localStorage.getItem(`resumo_ia_${cnj}`)
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (parsed.ultimoMovimento === chaveMovimento) return // cache válido, nada a fazer
+      }
+    } catch { /* ignore */ }
+
+    // Cache inexistente ou desatualizado — gera novo resumo
+    if (resumoIAStatus === 'loading') return
+    setResumoIAStatus('loading')
+
+    const prompt = `Analise este processo judicial e produza um resumo executivo com duas seções:
+
+1. **Petição inicial**: O que foi pedido, quem são as partes, qual o valor da causa e o fundamento jurídico principal.
+
+2. **Histórico de movimentações**: Os principais eventos processuais em ordem cronológica, destacando decisões, despachos, audiências e o estado atual do processo.
+
+Seja conciso e claro, como se explicasse para o cliente leigo o que aconteceu no processo.`
+
+    enviarMensagem(prompt, cnj)
+      .then(res => {
+        setResumoIA(res.resposta)
+        setResumoIAStatus('done')
+        try {
+          localStorage.setItem(`resumo_ia_${cnj}`, JSON.stringify({
+            resumo: res.resposta,
+            ultimoMovimento: chaveMovimento,
+          }))
+        } catch { /* ignore */ }
+      })
+      .catch(() => {
+        setResumoIAStatus('error')
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cnj, movementsQuery.isLoading, movementsQuery.data])
 
   const pendingMessagesQuery = useQuery({
     queryKey: ['client-message-approvals', cnj],
@@ -446,6 +510,34 @@ const ProcessDetail: React.FC = () => {
                   <p className="leading-relaxed text-gray-700">{process.descricao}</p>
                 </div>
               )}
+
+              <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-6">
+                <div className="mb-3 flex items-center gap-2">
+                  <span className="text-indigo-600">✦</span>
+                  <h3 className="font-semibold text-gray-900">Resumo gerado por IA</h3>
+                </div>
+                {resumoIAStatus === 'loading' && (
+                  <p className="animate-pulse text-sm text-indigo-600">Analisando o processo...</p>
+                )}
+                {resumoIAStatus === 'error' && (
+                  <p className="text-sm text-gray-500">
+                    Não foi possível gerar o resumo. Verifique se há uma chave de IA configurada em{' '}
+                    <a href="/configuracoes" className="text-indigo-600 underline">Configurações</a>.
+                  </p>
+                )}
+                {resumoIAStatus === 'done' && resumoIA && (
+                  <div className="space-y-3 text-sm leading-relaxed text-gray-700">
+                    {resumoIA.split('\n').map((linha, i) => {
+                      if (!linha.trim()) return null
+                      const negrito = linha.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                      if (linha.startsWith('**') || linha.match(/^\d+\./)) {
+                        return <p key={i} className="font-semibold text-gray-900" dangerouslySetInnerHTML={{ __html: negrito }} />
+                      }
+                      return <p key={i} dangerouslySetInnerHTML={{ __html: negrito }} />
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
